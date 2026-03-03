@@ -62,6 +62,7 @@ export interface PackageStats {
 
 export interface ComparePackage {
   name: string;
+  registry: "pypi" | "npm";
   color: string;
   dailyDownloads: { date: string; downloads: number }[];
   recentDownloads: {

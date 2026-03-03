@@ -105,7 +105,7 @@ export function ChartExportWrapper({ children, filename }: ChartExportWrapperPro
         >
           <Logo size={16} />
           <span className="text-[10px] text-muted-foreground">
-            made with better-pypi-stats
+            made with better-stats
           </span>
         </div>
       </div>

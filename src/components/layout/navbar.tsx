@@ -22,7 +22,7 @@ export function Navbar() {
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
             <Logo size={28} />
-            <span className="text-sm">better-pypi-stats</span>
+            <span className="text-sm">better-stats</span>
           </Link>
 
           <div className="hidden items-center gap-1 sm:flex">

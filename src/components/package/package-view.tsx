@@ -17,9 +17,12 @@ import type { PackageInfo } from "@/lib/api";
 interface PackageViewProps {
   stats: PackageStats;
   info: PackageInfo | null;
+  registry?: "pypi" | "npm";
 }
 
-export function PackageView({ stats, info }: PackageViewProps) {
+export function PackageView({ stats, info, registry = "pypi" }: PackageViewProps) {
+  const isPyPI = registry === "pypi";
+  const registryPrefix = `/${registry}`;
   // Calculate trend (compare last 7 days vs previous 7 days)
   const recent7 = stats.dailyDownloads.slice(-7);
   const prev7 = stats.dailyDownloads.slice(-14, -7);
@@ -50,6 +53,9 @@ export function PackageView({ stats, info }: PackageViewProps) {
               <p className="mt-1 text-muted-foreground">{info.summary}</p>
             )}
             <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Badge variant={isPyPI ? "secondary" : "outline"} className="text-xs">
+                {isPyPI ? "PyPI" : "npm"}
+              </Badge>
               {info?.version && (
                 <Badge variant="outline">v{info.version}</Badge>
               )}
@@ -65,14 +71,14 @@ export function PackageView({ stats, info }: PackageViewProps) {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" asChild>
-              <Link href={`/compare?packages=${stats.name}`}>
+              <Link href={`/compare?packages=${registry}:${stats.name}`}>
                 Compare
               </Link>
             </Button>
             {info?.projectUrl && (
               <Button variant="outline" size="sm" asChild>
                 <a href={info.projectUrl} target="_blank" rel="noopener noreferrer">
-                  PyPI <ExternalLink className="ml-1 h-3 w-3" />
+                  {isPyPI ? "PyPI" : "npm"} <ExternalLink className="ml-1 h-3 w-3" />
                 </a>
               </Button>
             )}
@@ -147,37 +153,41 @@ export function PackageView({ stats, info }: PackageViewProps) {
                   mode: "lines" as const,
                 }]
               : []),
-            {
-              label: "OS",
-              key: "os",
-              data: stats.systemTimeSeries.data,
-              categories: stats.systemTimeSeries.categories,
-            },
-            {
-              label: "Python",
-              key: "python",
-              data: stats.pythonVersionTimeSeries.data,
-              categories: stats.pythonVersionTimeSeries.categories,
-            },
-            {
-              label: "Py Minor",
-              key: "pyminor",
-              data: stats.pythonMinorTimeSeries.data,
-              categories: stats.pythonMinorTimeSeries.categories,
-            },
+            ...(isPyPI ? [
+              {
+                label: "OS",
+                key: "os",
+                data: stats.systemTimeSeries.data,
+                categories: stats.systemTimeSeries.categories,
+              },
+              {
+                label: "Python",
+                key: "python",
+                data: stats.pythonVersionTimeSeries.data,
+                categories: stats.pythonVersionTimeSeries.categories,
+              },
+              {
+                label: "Py Minor",
+                key: "pyminor",
+                data: stats.pythonMinorTimeSeries.data,
+                categories: stats.pythonMinorTimeSeries.categories,
+              },
+            ] : []),
           ]}
         />
       </div>
 
-      {/* Breakdown Charts - Row 1: OS + Python Major */}
-      <div className="mb-6 grid gap-6 md:grid-cols-2">
-        <SystemChart data={stats.systemBreakdown} packageName={stats.name} />
-        <PythonVersionChart data={stats.pythonVersionBreakdown} packageName={stats.name} />
-      </div>
+      {/* Breakdown Charts - Row 1: OS + Python Major (PyPI only) */}
+      {isPyPI && stats.systemBreakdown.length > 0 && (
+        <div className="mb-6 grid gap-6 md:grid-cols-2">
+          <SystemChart data={stats.systemBreakdown} packageName={stats.name} />
+          <PythonVersionChart data={stats.pythonVersionBreakdown} packageName={stats.name} />
+        </div>
+      )}
 
       {/* Breakdown Charts - Row 2: Python Minor + Versions */}
       <div className="grid gap-6 md:grid-cols-2">
-        {stats.pythonMinorBreakdown.length > 0 && (
+        {isPyPI && stats.pythonMinorBreakdown.length > 0 && (
           <PythonMinorChart data={stats.pythonMinorBreakdown} packageName={stats.name} />
         )}
         {info?.versions && info.versions.length > 0 && (

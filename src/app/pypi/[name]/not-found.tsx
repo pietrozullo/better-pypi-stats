@@ -10,7 +10,7 @@ export default function PackageNotFound() {
       </div>
       <h1 className="mt-4 text-xl font-bold">Package Not Found</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        The package you&apos;re looking for doesn&apos;t exist or has no download data.
+        The PyPI package you&apos;re looking for doesn&apos;t exist or has no download data.
       </p>
       <Button variant="outline" className="mt-6" asChild>
         <Link href="/">

@@ -11,18 +11,32 @@ import { CompareChart } from "@/components/charts/compare-chart";
 import { formatNumber, CHART_COLORS } from "@/lib/utils";
 import type { ComparePackage } from "@/lib/types";
 
+type Registry = "pypi" | "npm";
+
+function parsePackageSpec(spec: string): { registry: Registry; name: string } {
+  if (spec.startsWith("npm:")) return { registry: "npm", name: spec.slice(4) };
+  if (spec.startsWith("pypi:")) return { registry: "pypi", name: spec.slice(5) };
+  return { registry: "pypi", name: spec };
+}
+
+function toSpec(pkg: ComparePackage): string {
+  return `${pkg.registry}:${pkg.name}`;
+}
+
 function CompareContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [packages, setPackages] = useState<ComparePackage[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [selectedRegistry, setSelectedRegistry] = useState<Registry>("pypi");
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const addPackage = useCallback(async (name: string) => {
+  const addPackage = useCallback(async (name: string, registry: Registry) => {
     const normalized = name.trim().toLowerCase();
     if (!normalized) return;
-    if (packages.find((p) => p.name === normalized)) return;
+    const key = `${registry}:${normalized}`;
+    if (packages.find((p) => `${p.registry}:${p.name}` === key)) return;
     if (packages.length >= 5) {
       setError("Maximum 5 packages for comparison");
       return;
@@ -32,37 +46,45 @@ function CompareContent() {
     setError(null);
 
     try {
-      const [recentRes, overallRes] = await Promise.all([
-        fetch(`/api/pypi/${encodeURIComponent(normalized)}/recent`),
-        fetch(`/api/pypi/${encodeURIComponent(normalized)}/overall`),
-      ]);
+      let dailyDownloads: { date: string; downloads: number }[];
+      let recentDownloads: { lastDay: number; lastWeek: number; lastMonth: number };
 
-      if (!recentRes.ok || !overallRes.ok) {
-        throw new Error(`Package "${normalized}" not found`);
-      }
-
-      const recent = await recentRes.json();
-      const overall = await overallRes.json();
-
-      const dailyMap = new Map<string, number>();
-      for (const entry of overall.data) {
-        if (entry.category === "without_mirrors") {
-          dailyMap.set(entry.date, (dailyMap.get(entry.date) || 0) + entry.downloads);
+      if (registry === "npm") {
+        const [recentRes, overallRes] = await Promise.all([
+          fetch(`/api/npm/${encodeURIComponent(normalized)}/recent`),
+          fetch(`/api/npm/${encodeURIComponent(normalized)}/overall`),
+        ]);
+        if (!recentRes.ok || !overallRes.ok) throw new Error(`npm package "${normalized}" not found`);
+        const recent = await recentRes.json();
+        const overall = await overallRes.json();
+        dailyDownloads = overall.data;
+        recentDownloads = { lastDay: recent.data.last_day, lastWeek: recent.data.last_week, lastMonth: recent.data.last_month };
+      } else {
+        const [recentRes, overallRes] = await Promise.all([
+          fetch(`/api/pypi/${encodeURIComponent(normalized)}/recent`),
+          fetch(`/api/pypi/${encodeURIComponent(normalized)}/overall`),
+        ]);
+        if (!recentRes.ok || !overallRes.ok) throw new Error(`PyPI package "${normalized}" not found`);
+        const recent = await recentRes.json();
+        const overall = await overallRes.json();
+        const dailyMap = new Map<string, number>();
+        for (const entry of overall.data) {
+          if (entry.category === "without_mirrors") {
+            dailyMap.set(entry.date, (dailyMap.get(entry.date) || 0) + entry.downloads);
+          }
         }
+        dailyDownloads = Array.from(dailyMap.entries())
+          .map(([date, downloads]) => ({ date, downloads }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+        recentDownloads = { lastDay: recent.data.last_day, lastWeek: recent.data.last_week, lastMonth: recent.data.last_month };
       }
-      const dailyDownloads = Array.from(dailyMap.entries())
-        .map(([date, downloads]) => ({ date, downloads }))
-        .sort((a, b) => a.date.localeCompare(b.date));
 
       const newPkg: ComparePackage = {
         name: normalized,
+        registry,
         color: CHART_COLORS[packages.length % CHART_COLORS.length],
         dailyDownloads,
-        recentDownloads: {
-          lastDay: recent.data.last_day,
-          lastWeek: recent.data.last_week,
-          lastMonth: recent.data.last_month,
-        },
+        recentDownloads,
       };
 
       setPackages((prev) => [...prev, newPkg]);
@@ -71,18 +93,19 @@ function CompareContent() {
     } finally {
       setLoading(null);
     }
-  }, [packages, router]);
+  }, [packages]);
 
-  // Load packages from URL on mount
   useEffect(() => {
     const pkgParam = searchParams.get("packages");
     if (pkgParam && packages.length === 0) {
-      const names = pkgParam.split(",").filter(Boolean);
-      names.forEach((name) => addPackage(name));
+      const specs = pkgParam.split(",").filter(Boolean);
+      specs.forEach((spec) => {
+        const { registry, name } = parsePackageSpec(spec);
+        addPackage(name, registry);
+      });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync URL with packages state
   const isInitialMount = useRef(true);
   useEffect(() => {
     if (isInitialMount.current) {
@@ -90,16 +113,16 @@ function CompareContent() {
       return;
     }
     if (packages.length > 0) {
-      const names = packages.map((p) => p.name).join(",");
-      router.replace(`/compare?packages=${names}`, { scroll: false });
+      const specs = packages.map(toSpec).join(",");
+      router.replace(`/compare?packages=${specs}`, { scroll: false });
     } else {
       router.replace("/compare", { scroll: false });
     }
   }, [packages, router]);
 
-  function removePackage(name: string) {
+  function removePackage(registry: Registry, name: string) {
     setPackages((prev) =>
-      prev.filter((p) => p.name !== name).map((p, i) => ({
+      prev.filter((p) => !(p.registry === registry && p.name === name)).map((p, i) => ({
         ...p,
         color: CHART_COLORS[i % CHART_COLORS.length],
       }))
@@ -108,9 +131,8 @@ function CompareContent() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Support comma-separated list of packages
     const names = inputValue.split(",").map((s) => s.trim()).filter(Boolean);
-    names.forEach((name) => addPackage(name));
+    names.forEach((name) => addPackage(name, selectedRegistry));
     setInputValue("");
   }
 
@@ -126,10 +148,30 @@ function CompareContent() {
 
       <h1 className="text-3xl font-bold tracking-tight">Compare Packages</h1>
       <p className="mt-1 text-muted-foreground">
-        Compare download trends across multiple PyPI packages
+        Compare download trends across PyPI and npm packages
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 flex gap-2">
+        <div className="flex items-center rounded-md border border-border">
+          <button
+            type="button"
+            onClick={() => setSelectedRegistry("pypi")}
+            className={`px-3 py-2.5 text-xs font-medium transition-colors ${
+              selectedRegistry === "pypi" ? "bg-secondary text-foreground" : "text-muted-foreground"
+            }`}
+          >
+            PyPI
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedRegistry("npm")}
+            className={`px-3 py-2.5 text-xs font-medium transition-colors ${
+              selectedRegistry === "npm" ? "bg-secondary text-foreground" : "text-muted-foreground"
+            }`}
+          >
+            npm
+          </button>
+        </div>
         <div className="flex flex-1 items-center rounded-lg border border-border bg-card px-3 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/50">
           <input
             type="text"
@@ -154,10 +196,11 @@ function CompareContent() {
       {packages.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2">
           {packages.map((pkg) => (
-            <Badge key={pkg.name} variant="outline" className="gap-1.5 pr-1">
+            <Badge key={toSpec(pkg)} variant="outline" className="gap-1.5 pr-1">
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: pkg.color }} />
+              <span className="text-[9px] text-muted-foreground">{pkg.registry}</span>
               {pkg.name}
-              <button onClick={() => removePackage(pkg.name)} className="ml-1 rounded-sm p-0.5 hover:bg-secondary">
+              <button onClick={() => removePackage(pkg.registry, pkg.name)} className="ml-1 rounded-sm p-0.5 hover:bg-secondary">
                 <X className="h-3 w-3" />
               </button>
             </Badge>
@@ -193,13 +236,14 @@ function CompareContent() {
                       : 0;
 
                     return (
-                      <tr key={pkg.name} className="border-b border-border last:border-0">
+                      <tr key={toSpec(pkg)} className="border-b border-border last:border-0">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: pkg.color }} />
-                            <Link href={`/package/${pkg.name}`} className="font-medium hover:underline">
+                            <Link href={`/${pkg.registry}/${pkg.name}`} className="font-medium hover:underline">
                               {pkg.name}
                             </Link>
+                            <span className="text-[9px] text-muted-foreground rounded bg-secondary px-1 py-0.5">{pkg.registry}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right font-mono">{formatNumber(pkg.recentDownloads.lastDay)}</td>
@@ -226,21 +270,29 @@ function CompareContent() {
             Add packages above to start comparing download trends
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-2">
-            {["flask,django,fastapi", "requests,httpx,aiohttp", "numpy,pandas,polars"].map(
-              (combo) => (
-                <Button
-                  key={combo}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    router.push(`/compare?packages=${combo}`);
-                    combo.split(",").forEach((name) => addPackage(name));
-                  }}
-                >
-                  {combo.split(",").join(" vs ")}
-                </Button>
-              )
-            )}
+            {[
+              "pypi:flask,pypi:django,pypi:fastapi",
+              "npm:react,npm:vue,npm:svelte",
+              "pypi:requests,npm:axios",
+            ].map((combo) => (
+              <Button
+                key={combo}
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  router.push(`/compare?packages=${combo}`);
+                  combo.split(",").forEach((spec) => {
+                    const { registry, name } = parsePackageSpec(spec);
+                    addPackage(name, registry);
+                  });
+                }}
+              >
+                {combo.split(",").map(s => {
+                  const { name } = parsePackageSpec(s);
+                  return name;
+                }).join(" vs ")}
+              </Button>
+            ))}
           </div>
         </div>
       )}

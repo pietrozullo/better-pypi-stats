@@ -15,7 +15,7 @@ export function Logo({ size = 24, className }: LogoProps) {
   return (
     <Image
       src={theme === "dark" ? "/logo-light.svg" : "/logo-dark.svg"}
-      alt="better-pypi-stats"
+      alt="better-stats"
       width={size}
       height={size}
       className={cn("shrink-0", className)}

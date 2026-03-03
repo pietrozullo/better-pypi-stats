@@ -9,9 +9,10 @@ interface SearchBoxProps {
   large?: boolean;
   autoFocus?: boolean;
   className?: string;
+  registry?: "pypi" | "npm";
 }
 
-export function SearchBox({ large = false, autoFocus = false, className }: SearchBoxProps) {
+export function SearchBox({ large = false, autoFocus = false, className, registry = "pypi" }: SearchBoxProps) {
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -58,8 +59,15 @@ export function SearchBox({ large = false, autoFocus = false, className }: Searc
     if (!trimmed) return;
     setIsLoading(true);
     setShowSuggestions(false);
-    router.push(`/package/${encodeURIComponent(trimmed)}`);
-  }, [router]);
+    // Support explicit registry prefix: "npm/express" or "pypi/requests"
+    if (trimmed.startsWith("npm/")) {
+      router.push(`/npm/${encodeURIComponent(trimmed.slice(4))}`);
+    } else if (trimmed.startsWith("pypi/")) {
+      router.push(`/pypi/${encodeURIComponent(trimmed.slice(5))}`);
+    } else {
+      router.push(`/${registry}/${encodeURIComponent(trimmed)}`);
+    }
+  }, [router, registry]);
 
   function handleInputChange(value: string) {
     setQuery(value);

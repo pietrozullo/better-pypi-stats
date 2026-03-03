@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "better-pypi-stats",
-  description: "A better way to explore PyPI package download statistics",
+  title: "better-stats",
+  description: "A better way to explore package download statistics for PyPI and npm",
 };
 
 export default function RootLayout({
