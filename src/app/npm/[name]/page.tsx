@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getNpmPackageStats, getNpmPackageInfo } from "@/lib/npm-api";
+import { getOverallDownloads } from "@/lib/api";
 import { PackageView } from "@/components/package/package-view";
 import { PackageViewSkeleton } from "@/components/package/package-view-skeleton";
 
@@ -23,7 +24,37 @@ async function PackageData({ name }: { name: string }) {
       getNpmPackageInfo(name),
     ]);
 
-    return <PackageView stats={stats} info={info} registry="npm" />;
+    // Check if same package exists on PyPI
+    let crossRegistryDownloads: { date: string; downloads: number }[] | undefined;
+    try {
+      const pypiData = await getOverallDownloads(name);
+      if (pypiData.data.length > 0) {
+        // Aggregate PyPI daily downloads (without mirrors)
+        const dailyMap = new Map<string, number>();
+        for (const entry of pypiData.data) {
+          if (entry.category === "without_mirrors") {
+            dailyMap.set(entry.date, (dailyMap.get(entry.date) || 0) + entry.downloads);
+          }
+        }
+        const downloads = Array.from(dailyMap.entries())
+          .map(([date, downloads]) => ({ date, downloads }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+        if (downloads.length > 0) {
+          crossRegistryDownloads = downloads;
+        }
+      }
+    } catch {
+      // Package doesn't exist on PyPI - that's fine
+    }
+
+    return (
+      <PackageView
+        stats={stats}
+        info={info}
+        registry="npm"
+        crossRegistryDownloads={crossRegistryDownloads}
+      />
+    );
   } catch {
     notFound();
   }

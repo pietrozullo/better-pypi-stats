@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getPackageStats, getPackageInfo } from "@/lib/api";
+import { getNpmDailyDownloads } from "@/lib/npm-api";
 import { PackageView } from "@/components/package/package-view";
 import { PackageViewSkeleton } from "@/components/package/package-view-skeleton";
 
@@ -23,7 +24,25 @@ async function PackageData({ name }: { name: string }) {
       getPackageInfo(name),
     ]);
 
-    return <PackageView stats={stats} info={info} registry="pypi" />;
+    // Check if same package exists on npm
+    let crossRegistryDownloads: { date: string; downloads: number }[] | undefined;
+    try {
+      const npmData = await getNpmDailyDownloads(name, 180);
+      if (npmData.length > 0) {
+        crossRegistryDownloads = npmData;
+      }
+    } catch {
+      // Package doesn't exist on npm - that's fine
+    }
+
+    return (
+      <PackageView
+        stats={stats}
+        info={info}
+        registry="pypi"
+        crossRegistryDownloads={crossRegistryDownloads}
+      />
+    );
   } catch {
     notFound();
   }

@@ -18,11 +18,13 @@ interface PackageViewProps {
   stats: PackageStats;
   info: PackageInfo | null;
   registry?: "pypi" | "npm";
+  crossRegistryDownloads?: { date: string; downloads: number }[];
+  crossRegistryName?: string;
 }
 
-export function PackageView({ stats, info, registry = "pypi" }: PackageViewProps) {
+export function PackageView({ stats, info, registry = "pypi", crossRegistryDownloads, crossRegistryName }: PackageViewProps) {
   const isPyPI = registry === "pypi";
-  const registryPrefix = `/${registry}`;
+  const otherRegistry = isPyPI ? "npm" : "pypi";
   // Calculate trend (compare last 7 days vs previous 7 days)
   const recent7 = stats.dailyDownloads.slice(-7);
   const prev7 = stats.dailyDownloads.slice(-14, -7);
@@ -144,6 +146,32 @@ export function PackageView({ stats, info, registry = "pypi" }: PackageViewProps
           data={stats.dailyDownloads}
           packageName={stats.name}
           breakdowns={[
+            // Cross-registry breakdown (if package exists on both)
+            ...(crossRegistryDownloads && crossRegistryDownloads.length > 0
+              ? [{
+                  label: "Registry",
+                  key: "registry",
+                  mode: "lines" as const,
+                  ...(() => {
+                    // Merge both registries into a single time series
+                    const currentLabel = isPyPI ? "PyPI" : "npm";
+                    const otherLabel = isPyPI ? "npm" : "PyPI";
+                    const allDates = new Set<string>();
+                    stats.dailyDownloads.forEach((d) => allDates.add(d.date));
+                    crossRegistryDownloads.forEach((d) => allDates.add(d.date));
+                    const currentMap = new Map(stats.dailyDownloads.map((d) => [d.date, d.downloads]));
+                    const otherMap = new Map(crossRegistryDownloads.map((d) => [d.date, d.downloads]));
+                    const data = Array.from(allDates)
+                      .sort()
+                      .map((date) => ({
+                        date,
+                        [currentLabel]: currentMap.get(date) || 0,
+                        [otherLabel]: otherMap.get(date) || 0,
+                      }));
+                    return { data, categories: [currentLabel, otherLabel] };
+                  })(),
+                }]
+              : []),
             ...(stats.versionTimeSeries
               ? [{
                   label: "Version",
