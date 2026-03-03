@@ -64,6 +64,69 @@ export function calculateTrendLine(
   }));
 }
 
+export type Granularity = "day" | "week" | "month";
+
+function getWeekKey(date: string): string {
+  // ISO week: Monday-based. Return the Monday date as the key.
+  const d = new Date(date);
+  const day = d.getUTCDay();
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(d.setUTCDate(diff));
+  return monday.toISOString().split("T")[0];
+}
+
+function getMonthKey(date: string): string {
+  return date.slice(0, 7) + "-01"; // "2025-12-01"
+}
+
+/**
+ * Aggregate daily data into weekly or monthly buckets.
+ * Works for simple {date, downloads} arrays.
+ */
+export function aggregateByGranularity(
+  data: { date: string; downloads: number }[],
+  granularity: Granularity
+): { date: string; downloads: number }[] {
+  if (granularity === "day") return data;
+
+  const keyFn = granularity === "week" ? getWeekKey : getMonthKey;
+  const map = new Map<string, number>();
+  for (const point of data) {
+    const key = keyFn(point.date);
+    map.set(key, (map.get(key) || 0) + point.downloads);
+  }
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, downloads]) => ({ date, downloads }));
+}
+
+/**
+ * Aggregate breakdown time series (multiple categories per date) by granularity.
+ */
+export function aggregateBreakdownByGranularity(
+  data: Record<string, string | number>[],
+  categories: string[],
+  granularity: Granularity
+): Record<string, string | number>[] {
+  if (granularity === "day") return data;
+
+  const keyFn = granularity === "week" ? getWeekKey : getMonthKey;
+  const map = new Map<string, Record<string, number>>();
+
+  for (const point of data) {
+    const key = keyFn(String(point.date));
+    if (!map.has(key)) map.set(key, {});
+    const bucket = map.get(key)!;
+    for (const cat of categories) {
+      bucket[cat] = (bucket[cat] || 0) + Number(point[cat] || 0);
+    }
+  }
+
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, values]) => ({ date, ...values }));
+}
+
 export const CHART_COLORS = [
   "#6366f1", // indigo
   "#8b5cf6", // violet

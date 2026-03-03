@@ -20,7 +20,8 @@ import { Loader2, Filter, Check } from "lucide-react";
 import { ChartExportWrapper } from "./chart-export";
 import { DateTooltip } from "./chart-tooltip";
 import { useChartColors } from "./use-chart-colors";
-import { formatNumber, formatDateShort, calculateMovingAverage, calculateTrendLine, CHART_COLORS } from "@/lib/utils";
+import { formatNumber, formatDateShort, calculateMovingAverage, calculateTrendLine, CHART_COLORS, aggregateByGranularity, aggregateBreakdownByGranularity } from "@/lib/utils";
+import type { Granularity } from "@/lib/utils";
 import type { BreakdownTimeSeries } from "@/lib/types";
 
 interface BreakdownOption {
@@ -66,6 +67,7 @@ export function DownloadChart({
   } | null>(null);
   const [loadingExtended, setLoadingExtended] = useState(false);
   const [excludeUv, setExcludeUv] = useState(false);
+  const [granularity, setGranularity] = useState<Granularity>("day");
   const chartColors = useChartColors();
   const fetchCache = useRef(new Map<string, unknown>());
 
@@ -139,20 +141,23 @@ export function DownloadChart({
   }, [sourceData, dateRange]);
 
   const chartData = useMemo(() => {
-    let result = filteredData.map((d) => ({ ...d }));
+    // Aggregate by granularity first, then apply MA/trend on aggregated data
+    const aggregated = aggregateByGranularity(filteredData, granularity);
+    let result = aggregated.map((d) => ({ ...d }));
     if (showMA) {
-      const withMA = calculateMovingAverage(filteredData, 7);
+      const window = granularity === "day" ? 7 : granularity === "week" ? 4 : 3;
+      const withMA = calculateMovingAverage(aggregated, window);
       result = withMA;
     }
     if (showTrend) {
-      const withTrend = calculateTrendLine(filteredData);
+      const withTrend = calculateTrendLine(aggregated);
       result = result.map((d, i) => ({
         ...d,
         trend: withTrend[i]?.trend,
       }));
     }
     return result;
-  }, [filteredData, showMA, showTrend]);
+  }, [filteredData, showMA, showTrend, granularity]);
 
   // Get the active breakdown data (filtered by date range)
   const currentBreakdown = useMemo(() => {
@@ -161,11 +166,12 @@ export function DownloadChart({
     // For version breakdown, always use dynamically fetched data (handles excludeUv)
     if (activeBreakdown === "version" && extendedVersionData) {
       const cutoff = extendedVersionData.data.length - dateRange;
+      const sliced = extendedVersionData.data.slice(Math.max(0, cutoff));
       return {
         label: "Version",
         key: "version",
         mode: "lines" as const,
-        data: extendedVersionData.data.slice(Math.max(0, cutoff)),
+        data: aggregateBreakdownByGranularity(sliced, extendedVersionData.categories, granularity),
         categories: extendedVersionData.categories,
       };
     }
@@ -173,12 +179,13 @@ export function DownloadChart({
     const bd = breakdowns.find((b) => b.key === activeBreakdown);
     if (!bd) return null;
     const cutoff = bd.data.length - dateRange;
+    const sliced = bd.data.slice(Math.max(0, cutoff));
     return {
       ...bd,
       mode: bd.mode || "stacked",
-      data: bd.data.slice(Math.max(0, cutoff)),
+      data: aggregateBreakdownByGranularity(sliced, bd.categories, granularity),
     };
-  }, [activeBreakdown, breakdowns, dateRange, extendedVersionData]);
+  }, [activeBreakdown, breakdowns, dateRange, extendedVersionData, granularity]);
 
   const isBreakdownMode = currentBreakdown !== null;
 
@@ -360,6 +367,21 @@ export function DownloadChart({
             {loadingExtended && (
               <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
             )}
+            <div className="flex items-center rounded-md border border-border">
+              {(["day", "week", "month"] as const).map((g) => (
+                <button
+                  key={g}
+                  onClick={() => setGranularity(g)}
+                  className={`px-2 py-1 text-xs transition-colors capitalize ${
+                    granularity === g
+                      ? "bg-secondary text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {g === "day" ? "D" : g === "week" ? "W" : "M"}
+                </button>
+              ))}
+            </div>
             <div className="flex items-center rounded-md border border-border">
               {DATE_RANGES.map((range) => (
                 <button
