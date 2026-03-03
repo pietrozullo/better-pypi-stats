@@ -42,7 +42,7 @@ const handler = createMcpHandler(
               }, null, 2),
             }],
           };
-        } catch (e) {
+        } catch {
           return {
             content: [{ type: "text" as const, text: `Error: Package "${package_name}" not found on ${registry}` }],
             isError: true,
@@ -133,7 +133,7 @@ const handler = createMcpHandler(
   },
   {},
   {
-    basePath: "/api/mcp",
+    basePath: "/api",
     verboseLogs: true,
   }
 );

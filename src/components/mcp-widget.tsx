@@ -26,35 +26,37 @@ function McpLogo({ size = 24, className }: { size?: number; className?: string }
   );
 }
 
-const MCP_URL = typeof window !== "undefined"
-  ? `${window.location.origin}/api/mcp/mcp`
-  : "https://better-pipy-downloads.vercel.app/api/mcp/mcp";
+function useMcpUrl() {
+  if (typeof window === "undefined") return "https://better-pipy-downloads.vercel.app/api/mcp";
+  return `${window.location.origin}/api/mcp`;
+}
 
-const CLAUDE_CONFIG = `{
+function buildClients(mcpUrl: string) {
+  const jsonConfig = `{
   "mcpServers": {
     "better-stats": {
-      "url": "${typeof window !== "undefined" ? window.location.origin : "https://better-pipy-downloads.vercel.app"}/api/mcp/mcp"
+      "url": "${mcpUrl}"
     }
   }
 }`;
-
-const CLIENTS = [
-  {
-    name: "Claude Desktop",
-    description: "Add to claude_desktop_config.json",
-    config: CLAUDE_CONFIG,
-  },
-  {
-    name: "Claude Code",
-    description: "Run in terminal",
-    config: `claude mcp add better-stats --transport http ${MCP_URL}`,
-  },
-  {
-    name: "Cursor",
-    description: "Add to .cursor/mcp.json",
-    config: CLAUDE_CONFIG,
-  },
-];
+  return [
+    {
+      name: "Claude Desktop",
+      description: "Add to claude_desktop_config.json",
+      config: jsonConfig,
+    },
+    {
+      name: "Claude Code",
+      description: "Run in terminal",
+      config: `claude mcp add better-stats --transport http ${mcpUrl}`,
+    },
+    {
+      name: "Cursor",
+      description: "Add to .cursor/mcp.json",
+      config: jsonConfig,
+    },
+  ];
+}
 
 const TOOLS = [
   { name: "get_package_stats", description: "Download stats for any PyPI or npm package" },
@@ -66,6 +68,8 @@ export function McpWidget() {
   const [open, setOpen] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const mcpUrl = useMcpUrl();
+  const clients = buildClients(mcpUrl);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -115,9 +119,9 @@ export function McpWidget() {
                 Endpoint
               </div>
               <div className="flex items-center gap-2 rounded-md bg-secondary px-3 py-2">
-                <code className="flex-1 text-xs font-mono truncate">{MCP_URL}</code>
+                <code className="flex-1 text-xs font-mono truncate">{mcpUrl}</code>
                 <button
-                  onClick={() => copyToClipboard(MCP_URL, -1)}
+                  onClick={() => copyToClipboard(mcpUrl, -1)}
                   className="shrink-0 text-muted-foreground hover:text-foreground"
                 >
                   {copiedIndex === -1 ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
@@ -131,7 +135,7 @@ export function McpWidget() {
                 Connect
               </div>
               <div className="space-y-2">
-                {CLIENTS.map((client, i) => (
+                {clients.map((client, i) => (
                   <div key={client.name} className="rounded-lg border border-border p-3">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-xs font-medium">{client.name}</span>
