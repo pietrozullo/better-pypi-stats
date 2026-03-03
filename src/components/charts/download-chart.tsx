@@ -239,7 +239,7 @@ export function DownloadChart({
       <Card data-chart-card>
         <CardHeader className="flex flex-col gap-2 pb-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-sm font-medium">{title}</CardTitle>
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1" data-export-hide>
             {/* Breakdown toggles */}
             {breakdowns.length > 0 && (
               <div className="flex items-center rounded-md border border-border mr-1">
@@ -408,7 +408,7 @@ export function DownloadChart({
                 /* Line chart for version breakdown (overlapping, not stacked) */
                 <LineChart
                   data={currentBreakdown.data}
-                  margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
+                  margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
                   <XAxis
@@ -427,6 +427,7 @@ export function DownloadChart({
                     fontSize={11}
                     tickLine={false}
                     axisLine={false}
+                    width={55}
                   />
                   <Tooltip content={<DateTooltip sortByValue />} />
                   <Legend
@@ -452,7 +453,7 @@ export function DownloadChart({
                 /* Stacked area chart for OS/Python breakdown */
                 <AreaChart
                   data={currentBreakdown.data}
-                  margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
+                  margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
                 >
                   <defs>
                     {currentBreakdown.categories.map((cat, i) => (
@@ -479,6 +480,7 @@ export function DownloadChart({
                     fontSize={11}
                     tickLine={false}
                     axisLine={false}
+                    width={55}
                   />
                   <Tooltip content={<DateTooltip sortByValue />} />
                   <Legend
@@ -503,7 +505,7 @@ export function DownloadChart({
                 </AreaChart>
               ) : (
                 /* Default composed chart */
-                <ComposedChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                <ComposedChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                   <defs>
                     <linearGradient id={`gradient-${color}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={color} stopOpacity={0.2} />
@@ -527,6 +529,7 @@ export function DownloadChart({
                     fontSize={11}
                     tickLine={false}
                     axisLine={false}
+                    width={55}
                   />
                   <Tooltip
                     content={

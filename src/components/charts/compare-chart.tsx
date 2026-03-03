@@ -21,15 +21,31 @@ import { useChartColors } from "./use-chart-colors";
 interface CompareChartProps {
   packages: {
     name: string;
+    registry?: "pypi" | "npm";
     color: string;
     dailyDownloads: { date: string; downloads: number }[];
   }[];
+}
+
+function displayKey(pkg: { name: string; registry?: string }): string {
+  // If multiple packages have the same name, prefix with registry
+  return pkg.registry ? `${pkg.registry}:${pkg.name}` : pkg.name;
 }
 
 export function CompareChart({ packages }: CompareChartProps) {
   const [normalized, setNormalized] = useState(false);
   const [smoothed, setSmoothed] = useState(true);
   const chartColors = useChartColors();
+
+  // Check if any names collide (same name, different registry)
+  const hasNameCollision = useMemo(() => {
+    const names = packages.map((p) => p.name);
+    return names.length !== new Set(names).size;
+  }, [packages]);
+
+  // Use registry:name only when there's a collision, otherwise just name
+  const getLabel = (pkg: { name: string; registry?: string }) =>
+    hasNameCollision ? displayKey(pkg) : pkg.name;
 
   const chartData = useMemo(() => {
     if (packages.length === 0) return [];
@@ -66,11 +82,11 @@ export function CompareChart({ packages }: CompareChartProps) {
           value = Math.round((value / max) * 100);
         }
 
-        point[pkg.name] = value;
+        point[getLabel(pkg)] = value;
       });
       return point;
     });
-  }, [packages, normalized, smoothed]);
+  }, [packages, normalized, smoothed, getLabel]);
 
   const exportFilename = `compare-${packages.map((p) => p.name).join("-vs-")}`;
 
@@ -79,7 +95,7 @@ export function CompareChart({ packages }: CompareChartProps) {
       <Card data-chart-card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">Download Comparison</CardTitle>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1" data-export-hide>
             <Button
               variant={smoothed ? "secondary" : "ghost"}
               size="sm"
@@ -102,7 +118,7 @@ export function CompareChart({ packages }: CompareChartProps) {
         <CardContent>
           <div className="h-[400px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+              <LineChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
                 <XAxis
                   dataKey="date"
@@ -120,10 +136,12 @@ export function CompareChart({ packages }: CompareChartProps) {
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
+                  width={55}
                 />
                 <Tooltip
                   content={
                     <DateTooltip
+                      sortByValue
                       valueFormatter={(value) =>
                         normalized ? `${value}%` : formatNumber(value)
                       }
@@ -137,9 +155,9 @@ export function CompareChart({ packages }: CompareChartProps) {
                 />
                 {packages.map((pkg) => (
                   <Line
-                    key={pkg.name}
+                    key={displayKey(pkg)}
                     type="monotone"
-                    dataKey={pkg.name}
+                    dataKey={getLabel(pkg)}
                     stroke={pkg.color}
                     strokeWidth={2}
                     dot={false}

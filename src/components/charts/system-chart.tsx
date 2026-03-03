@@ -26,7 +26,7 @@ export function SystemChart({ data, packageName = "chart" }: SystemChartProps) {
       <Card data-chart-card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">Downloads by OS</CardTitle>
-          <ExportButtons />
+          <div data-export-hide><ExportButtons /></div>
         </CardHeader>
         <CardContent>
           <div className="h-[280px]">

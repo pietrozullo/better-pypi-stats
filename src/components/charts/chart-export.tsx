@@ -57,7 +57,11 @@ export function ChartExportWrapper({ children, filename }: ChartExportWrapperPro
 
     const watermark = chartRef.current.querySelector("[data-watermark]") as HTMLElement;
     const card = chartRef.current.querySelector("[data-chart-card]") as HTMLElement;
+    const hideElements = chartRef.current.querySelectorAll("[data-export-hide]") as NodeListOf<HTMLElement>;
+
+    // Show watermark, hide controls
     if (watermark) watermark.style.display = "flex";
+    hideElements.forEach((el) => { el.style.display = "none"; });
     if (card) {
       card.style.borderBottomLeftRadius = "0";
       card.style.borderBottomRightRadius = "0";
@@ -86,6 +90,7 @@ export function ChartExportWrapper({ children, filename }: ChartExportWrapperPro
       link.click();
     } finally {
       if (watermark) watermark.style.display = "none";
+      hideElements.forEach((el) => { el.style.display = ""; });
       if (card) {
         card.style.borderBottomLeftRadius = "";
         card.style.borderBottomRightRadius = "";
