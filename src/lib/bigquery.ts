@@ -34,17 +34,18 @@ export function hasBigQueryCredentials(): boolean {
  */
 export async function getVersionDownloads(
   pkg: string,
-  days: number = 90
+  days: number = 90,
+  excludeUv: boolean = false
 ): Promise<{ data: BreakdownTimeSeries; categories: string[] } | null> {
   if (!hasBigQueryCredentials()) return null;
 
   try {
     const client = await getClient();
 
-    // Exclude uv resolver downloads - uv downloads ALL versions during dependency
-    // resolution, making per-version data meaningless without this filter.
-    // Real installs via pip, poetry, etc. are preserved.
-    const UV_FILTER = `AND (details.installer.name IS NULL OR details.installer.name != 'uv')`;
+    // Optional filter: exclude uv resolver downloads when requested
+    const INSTALLER_FILTER = excludeUv
+      ? `AND (details.installer.name IS NULL OR details.installer.name != 'uv')`
+      : "";
 
     // Step 1: Find top versions by combining:
     //   - Top 5 by total downloads over the full period (established versions)
@@ -56,7 +57,7 @@ export async function getVersionDownloads(
           FROM \`bigquery-public-data.pypi.file_downloads\`
           WHERE file.project = @project
             AND DATE(timestamp) BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL @days DAY) AND CURRENT_DATE()
-            ${UV_FILTER}
+            ${INSTALLER_FILTER}
           GROUP BY version
           ORDER BY total DESC
           LIMIT 5
@@ -66,7 +67,7 @@ export async function getVersionDownloads(
           FROM \`bigquery-public-data.pypi.file_downloads\`
           WHERE file.project = @project
             AND DATE(timestamp) BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY) AND CURRENT_DATE()
-            ${UV_FILTER}
+            ${INSTALLER_FILTER}
           GROUP BY version
           ORDER BY total DESC
           LIMIT 5
@@ -98,7 +99,7 @@ export async function getVersionDownloads(
         WHERE file.project = @project
           AND DATE(timestamp) BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL @days DAY) AND CURRENT_DATE()
           AND file.version IN UNNEST(@versions)
-          ${UV_FILTER}
+          ${INSTALLER_FILTER}
         GROUP BY date, version
         ORDER BY date
       `,

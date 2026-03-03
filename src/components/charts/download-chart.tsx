@@ -65,52 +65,66 @@ export function DownloadChart({
     categories: string[];
   } | null>(null);
   const [loadingExtended, setLoadingExtended] = useState(false);
+  const [excludeUv, setExcludeUv] = useState(false);
   const chartColors = useChartColors();
   const fetchCache = useRef(new Map<string, unknown>());
 
-  // Fetch extended data from BigQuery
-  const fetchExtendedData = useCallback(async (days: number, type: "history" | "versions") => {
-    const cacheKey = `${type}-${days}`;
-    if (fetchCache.current.has(cacheKey)) return fetchCache.current.get(cacheKey);
-
+  // Fetch data from BigQuery APIs
+  const fetchVersionData = useCallback(async (days: number, uvFilter: boolean) => {
+    const cacheKey = `versions-${days}-${uvFilter}`;
+    if (fetchCache.current.has(cacheKey)) {
+      const cached = fetchCache.current.get(cacheKey) as { data: BreakdownTimeSeries; categories: string[] };
+      setExtendedVersionData(cached);
+      return;
+    }
     setLoadingExtended(true);
     try {
-      const url = type === "history"
-        ? `/api/pypi/${encodeURIComponent(packageName)}/history?days=${days}`
-        : `/api/pypi/${encodeURIComponent(packageName)}/versions?days=${days}`;
-      const res = await fetch(url);
-      const json = await res.json();
-      if (json.available) {
-        fetchCache.current.set(cacheKey, json);
-        if (type === "history" && json.data) {
-          setExtendedData(json.data);
-        } else if (type === "versions" && json.data && json.categories) {
-          setExtendedVersionData({ data: json.data, categories: json.categories });
-        }
-        return json;
+      const url = `/api/pypi/${encodeURIComponent(packageName)}/versions?days=${days}&excludeUv=${uvFilter}`;
+      const json = await (await fetch(url)).json();
+      if (json.available && json.data && json.categories) {
+        const result = { data: json.data, categories: json.categories };
+        fetchCache.current.set(cacheKey, result);
+        setExtendedVersionData(result);
       }
     } catch {
       // Fall back to existing data
     } finally {
       setLoadingExtended(false);
     }
-    return null;
   }, [packageName]);
 
-  // When date range or breakdown changes, fetch extended data if needed
-  useEffect(() => {
-    if (dateRange > 180) {
-      if (activeBreakdown === "version") {
-        fetchExtendedData(dateRange, "versions");
-      }
-      if (!activeBreakdown) {
-        fetchExtendedData(dateRange, "history");
-      }
-    } else {
-      // Reset extended data for short ranges so we use pre-fetched data
-      setExtendedVersionData(null);
+  const fetchHistoryData = useCallback(async (days: number) => {
+    const cacheKey = `history-${days}`;
+    if (fetchCache.current.has(cacheKey)) {
+      const cached = fetchCache.current.get(cacheKey) as { data: { date: string; downloads: number }[] };
+      setExtendedData(cached.data);
+      return;
     }
-  }, [dateRange, activeBreakdown, fetchExtendedData]);
+    setLoadingExtended(true);
+    try {
+      const url = `/api/pypi/${encodeURIComponent(packageName)}/history?days=${days}`;
+      const json = await (await fetch(url)).json();
+      if (json.available && json.data) {
+        fetchCache.current.set(cacheKey, { data: json.data });
+        setExtendedData(json.data);
+      }
+    } catch {
+      // Fall back
+    } finally {
+      setLoadingExtended(false);
+    }
+  }, [packageName]);
+
+  // Fetch data when range/breakdown/filter changes
+  useEffect(() => {
+    if (activeBreakdown === "version") {
+      // Always fetch version data from API (with excludeUv param)
+      // For <= 180 days, the server-side pre-fetch didn't have excludeUv option
+      fetchVersionData(Math.max(dateRange, 90), excludeUv);
+    } else if (dateRange > 180 && !activeBreakdown) {
+      fetchHistoryData(dateRange);
+    }
+  }, [dateRange, activeBreakdown, excludeUv, fetchVersionData, fetchHistoryData]);
 
   function handleDateRangeChange(days: number) {
     setDateRange(days);
@@ -144,13 +158,14 @@ export function DownloadChart({
   const currentBreakdown = useMemo(() => {
     if (!activeBreakdown) return null;
 
-    // For version breakdown with extended range, use dynamically fetched data
-    if (activeBreakdown === "version" && dateRange > 180 && extendedVersionData) {
+    // For version breakdown, always use dynamically fetched data (handles excludeUv)
+    if (activeBreakdown === "version" && extendedVersionData) {
+      const cutoff = extendedVersionData.data.length - dateRange;
       return {
         label: "Version",
         key: "version",
         mode: "lines" as const,
-        data: extendedVersionData.data,
+        data: extendedVersionData.data.slice(Math.max(0, cutoff)),
         categories: extendedVersionData.categories,
       };
     }
@@ -242,6 +257,20 @@ export function DownloadChart({
                   </button>
                 ))}
               </div>
+            )}
+            {/* Exclude uv toggle - only for version breakdown */}
+            {isBreakdownMode && activeBreakdown === "version" && (
+              <button
+                onClick={() => setExcludeUv(!excludeUv)}
+                className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
+                  excludeUv
+                    ? "border-warning text-warning"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+                title="uv downloads all versions during dependency resolution, which can inflate counts equally across versions. Toggle this to see only pip/poetry installs."
+              >
+                {excludeUv ? "uv excluded" : "incl. uv"}
+              </button>
             )}
             {/* Category filter dropdown */}
             {isBreakdownMode && currentBreakdown.categories.length > 2 && (

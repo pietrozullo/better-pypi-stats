@@ -8,11 +8,12 @@ export async function GET(
 ) {
   const { package: pkg } = await params;
   const days = parseInt(request.nextUrl.searchParams.get("days") || "90", 10);
+  const excludeUv = request.nextUrl.searchParams.get("excludeUv") === "true";
   const cappedDays = Math.min(days, 1095);
 
   try {
     if (hasBigQueryCredentials()) {
-      const result = await getVersionDownloads(pkg, cappedDays);
+      const result = await getVersionDownloads(pkg, cappedDays, excludeUv);
       if (result) {
         return NextResponse.json({ available: true, source: "bigquery", ...result });
       }
