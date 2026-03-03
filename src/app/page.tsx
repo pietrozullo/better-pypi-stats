@@ -1,56 +1,37 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { SearchBox } from "@/components/search-box";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, TrendingUp, Package, GitCompare } from "lucide-react";
 import { Logo } from "@/components/logo";
 
-type Registry = "pypi" | "npm";
-
-const PYPI_PACKAGES = [
-  { name: "requests", description: "HTTP library for Python" },
-  { name: "numpy", description: "Scientific computing" },
-  { name: "pandas", description: "Data analysis toolkit" },
-  { name: "flask", description: "Lightweight web framework" },
-  { name: "django", description: "Full-featured web framework" },
-  { name: "fastapi", description: "Modern async web framework" },
-  { name: "boto3", description: "AWS SDK for Python" },
-  { name: "pydantic", description: "Data validation" },
-  { name: "pytest", description: "Testing framework" },
-  { name: "httpx", description: "Async HTTP client" },
-  { name: "uvicorn", description: "ASGI server" },
-  { name: "sqlalchemy", description: "SQL toolkit & ORM" },
-];
-
-const NPM_PACKAGES = [
-  { name: "react", description: "UI component library" },
-  { name: "next", description: "React framework" },
-  { name: "typescript", description: "Typed JavaScript" },
-  { name: "express", description: "Web framework" },
-  { name: "axios", description: "HTTP client" },
-  { name: "lodash", description: "Utility library" },
-  { name: "tailwindcss", description: "Utility-first CSS" },
-  { name: "zod", description: "Schema validation" },
-  { name: "prisma", description: "Database ORM" },
-  { name: "eslint", description: "Code linter" },
-  { name: "vitest", description: "Testing framework" },
-  { name: "esbuild", description: "JS bundler" },
+const POPULAR_PACKAGES = [
+  { name: "requests", registry: "pypi" as const, description: "HTTP library for Python" },
+  { name: "react", registry: "npm" as const, description: "UI component library" },
+  { name: "numpy", registry: "pypi" as const, description: "Scientific computing" },
+  { name: "next", registry: "npm" as const, description: "React framework" },
+  { name: "fastapi", registry: "pypi" as const, description: "Async web framework" },
+  { name: "express", registry: "npm" as const, description: "Node.js web framework" },
+  { name: "pandas", registry: "pypi" as const, description: "Data analysis toolkit" },
+  { name: "typescript", registry: "npm" as const, description: "Typed JavaScript" },
+  { name: "django", registry: "pypi" as const, description: "Web framework" },
+  { name: "axios", registry: "npm" as const, description: "HTTP client" },
+  { name: "flask", registry: "pypi" as const, description: "Lightweight web framework" },
+  { name: "tailwindcss", registry: "npm" as const, description: "Utility-first CSS" },
 ];
 
 const COMPARE_SUGGESTIONS = [
-  { packages: ["pypi:flask", "pypi:django", "pypi:fastapi"], label: "Python Web Frameworks" },
+  { packages: ["pypi:requests", "npm:axios", "npm:node-fetch"], label: "HTTP Clients: Python vs JS" },
+  { packages: ["pypi:fastapi", "npm:express", "npm:hono"], label: "Web Frameworks: Cross-Language" },
+  { packages: ["pypi:pytest", "npm:vitest", "npm:jest"], label: "Testing: Python vs JS" },
+  { packages: ["pypi:pydantic", "npm:zod", "npm:yup"], label: "Validation: Python vs JS" },
   { packages: ["npm:react", "npm:vue", "npm:svelte"], label: "JS UI Frameworks" },
-  { packages: ["pypi:requests", "npm:axios"], label: "HTTP Clients: Python vs JS" },
-  { packages: ["npm:express", "npm:fastify", "npm:hono"], label: "Node.js Servers" },
+  { packages: ["pypi:flask", "pypi:django", "pypi:fastapi"], label: "Python Web Frameworks" },
 ];
 
 export default function HomePage() {
   const router = useRouter();
-  const [registry, setRegistry] = useState<Registry>("pypi");
-
-  const packages = registry === "pypi" ? PYPI_PACKAGES : NPM_PACKAGES;
 
   return (
     <div className="flex flex-col items-center">
@@ -70,48 +51,33 @@ export default function HomePage() {
           Explore download trends, compare packages, and analyze PyPI &amp; npm
           ecosystem data with beautiful, interactive charts.
         </p>
-        <SearchBox large autoFocus className="w-full max-w-xl" registry={registry} />
+        <SearchBox large autoFocus className="w-full max-w-xl" />
       </div>
 
-      {/* Trending Packages */}
+      {/* Popular Packages - mixed PyPI & npm */}
       <section className="w-full max-w-4xl animate-fade-in" style={{ animationDelay: "0.2s", opacity: 0 }}>
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Package className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-medium text-muted-foreground">Popular Packages</h2>
-          </div>
-          <div className="flex items-center rounded-md border border-border">
-            <button
-              onClick={() => setRegistry("pypi")}
-              className={`px-3 py-1 text-xs font-medium transition-colors ${
-                registry === "pypi"
-                  ? "bg-secondary text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              PyPI
-            </button>
-            <button
-              onClick={() => setRegistry("npm")}
-              className={`px-3 py-1 text-xs font-medium transition-colors ${
-                registry === "npm"
-                  ? "bg-secondary text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              npm
-            </button>
-          </div>
+        <div className="mb-4 flex items-center gap-2">
+          <Package className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-medium text-muted-foreground">Popular Packages</h2>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-          {packages.map((pkg) => (
+          {POPULAR_PACKAGES.map((pkg) => (
             <button
-              key={pkg.name}
-              onClick={() => router.push(`/${registry}/${pkg.name}`)}
+              key={`${pkg.registry}-${pkg.name}`}
+              onClick={() => router.push(`/${pkg.registry}/${pkg.name}`)}
               className="group flex items-center justify-between rounded-lg border border-border bg-card p-3 text-left transition-all hover:border-ring hover:bg-secondary"
             >
               <div>
-                <div className="text-sm font-medium">{pkg.name}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium">{pkg.name}</span>
+                  <span className={`text-[9px] rounded px-1 py-0.5 ${
+                    pkg.registry === "npm"
+                      ? "bg-destructive/10 text-destructive"
+                      : "bg-chart-1/10 text-chart-1"
+                  }`}>
+                    {pkg.registry}
+                  </span>
+                </div>
                 <div className="text-xs text-muted-foreground">{pkg.description}</div>
               </div>
               <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
@@ -120,13 +86,13 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Compare Suggestions */}
+      {/* Compare Suggestions - cross-registry focused */}
       <section className="mt-12 w-full max-w-4xl animate-fade-in" style={{ animationDelay: "0.4s", opacity: 0 }}>
         <div className="mb-4 flex items-center gap-2">
           <GitCompare className="h-4 w-4 text-muted-foreground" />
           <h2 className="text-sm font-medium text-muted-foreground">Quick Comparisons</h2>
         </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {COMPARE_SUGGESTIONS.map((suggestion) => (
             <button
               key={suggestion.label}
@@ -139,12 +105,14 @@ export default function HomePage() {
             >
               <div>
                 <div className="text-sm font-medium">{suggestion.label}</div>
-                <div className="mt-1 flex gap-1.5">
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {suggestion.packages.map((pkg) => {
                     const [reg, name] = pkg.includes(":") ? pkg.split(":") : ["pypi", pkg];
                     return (
                       <Badge key={pkg} variant="secondary" className="text-xs gap-1">
-                        <span className="text-[9px] text-muted-foreground">{reg}</span>
+                        <span className={`text-[9px] ${
+                          reg === "npm" ? "text-destructive" : "text-chart-1"
+                        }`}>{reg}</span>
                         {name}
                       </Badge>
                     );

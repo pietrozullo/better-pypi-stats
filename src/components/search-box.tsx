@@ -12,20 +12,35 @@ interface SearchBoxProps {
   registry?: "pypi" | "npm";
 }
 
+interface Suggestion {
+  name: string;
+  registry: "pypi" | "npm";
+}
+
+const POPULAR: Suggestion[] = [
+  { name: "requests", registry: "pypi" },
+  { name: "react", registry: "npm" },
+  { name: "numpy", registry: "pypi" },
+  { name: "next", registry: "npm" },
+  { name: "flask", registry: "pypi" },
+  { name: "express", registry: "npm" },
+  { name: "fastapi", registry: "pypi" },
+  { name: "typescript", registry: "npm" },
+  { name: "pandas", registry: "pypi" },
+  { name: "axios", registry: "npm" },
+  { name: "django", registry: "pypi" },
+  { name: "tailwindcss", registry: "npm" },
+];
+
 export function SearchBox({ large = false, autoFocus = false, className, registry = "pypi" }: SearchBoxProps) {
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const popularPackages = [
-    "requests", "numpy", "pandas", "flask", "django",
-    "fastapi", "boto3", "tensorflow", "pytorch", "scikit-learn",
-  ];
 
   useEffect(() => {
     if (autoFocus && inputRef.current) {
@@ -54,27 +69,31 @@ export function SearchBox({ large = false, autoFocus = false, className, registr
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const navigateTo = useCallback((name: string, reg: "pypi" | "npm") => {
+    setIsLoading(true);
+    setShowSuggestions(false);
+    router.push(`/${reg}/${encodeURIComponent(name)}`);
+  }, [router]);
+
   const handleSearch = useCallback((packageName: string) => {
     const trimmed = packageName.trim().toLowerCase();
     if (!trimmed) return;
-    setIsLoading(true);
-    setShowSuggestions(false);
     // Support explicit registry prefix: "npm/express" or "pypi/requests"
     if (trimmed.startsWith("npm/")) {
-      router.push(`/npm/${encodeURIComponent(trimmed.slice(4))}`);
+      navigateTo(trimmed.slice(4), "npm");
     } else if (trimmed.startsWith("pypi/")) {
-      router.push(`/pypi/${encodeURIComponent(trimmed.slice(5))}`);
+      navigateTo(trimmed.slice(5), "pypi");
     } else {
-      router.push(`/${registry}/${encodeURIComponent(trimmed)}`);
+      navigateTo(trimmed, registry);
     }
-  }, [router, registry]);
+  }, [navigateTo, registry]);
 
   function handleInputChange(value: string) {
     setQuery(value);
     setSelectedIndex(-1);
-    if (value.length >= 2) {
-      const filtered = popularPackages.filter((p) =>
-        p.toLowerCase().includes(value.toLowerCase())
+    if (value.length >= 1) {
+      const filtered = POPULAR.filter((p) =>
+        p.name.toLowerCase().includes(value.toLowerCase())
       );
       setSuggestions(filtered);
       setShowSuggestions(filtered.length > 0);
@@ -86,7 +105,8 @@ export function SearchBox({ large = false, autoFocus = false, className, registr
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter") {
       if (selectedIndex >= 0 && suggestions[selectedIndex]) {
-        handleSearch(suggestions[selectedIndex]);
+        const s = suggestions[selectedIndex];
+        navigateTo(s.name, s.registry);
       } else {
         handleSearch(query);
       }
@@ -117,12 +137,12 @@ export function SearchBox({ large = false, autoFocus = false, className, registr
         <input
           ref={inputRef}
           type="text"
-          placeholder="Search PyPI packages..."
+          placeholder="Search packages... (try npm/react or pypi/flask)"
           value={query}
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => {
-            if (query.length >= 2 && suggestions.length > 0) {
+            if (query.length >= 1 && suggestions.length > 0) {
               setShowSuggestions(true);
             }
           }}
@@ -145,8 +165,8 @@ export function SearchBox({ large = false, autoFocus = false, className, registr
         <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-border bg-card p-1 shadow-lg animate-fade-in">
           {suggestions.map((pkg, i) => (
             <button
-              key={pkg}
-              onClick={() => handleSearch(pkg)}
+              key={`${pkg.registry}-${pkg.name}`}
+              onClick={() => navigateTo(pkg.name, pkg.registry)}
               className={cn(
                 "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
                 i === selectedIndex
@@ -154,8 +174,11 @@ export function SearchBox({ large = false, autoFocus = false, className, registr
                   : "text-muted-foreground hover:bg-secondary hover:text-foreground"
               )}
             >
-              <Search className="h-3 w-3" />
-              {pkg}
+              <Search className="h-3 w-3 shrink-0" />
+              <span className="text-[10px] rounded bg-secondary px-1.5 py-0.5 text-muted-foreground shrink-0">
+                {pkg.registry}
+              </span>
+              {pkg.name}
             </button>
           ))}
         </div>
