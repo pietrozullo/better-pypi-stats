@@ -41,6 +41,11 @@ export async function getVersionDownloads(
   try {
     const client = await getClient();
 
+    // Exclude uv resolver downloads - uv downloads ALL versions during dependency
+    // resolution, making per-version data meaningless without this filter.
+    // Real installs via pip, poetry, etc. are preserved.
+    const UV_FILTER = `AND (details.installer.name IS NULL OR details.installer.name != 'uv')`;
+
     // Step 1: Find top versions by combining:
     //   - Top 5 by total downloads over the full period (established versions)
     //   - Top 5 by downloads in the last 7 days (catches newly released versions)
@@ -51,6 +56,7 @@ export async function getVersionDownloads(
           FROM \`bigquery-public-data.pypi.file_downloads\`
           WHERE file.project = @project
             AND DATE(timestamp) BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL @days DAY) AND CURRENT_DATE()
+            ${UV_FILTER}
           GROUP BY version
           ORDER BY total DESC
           LIMIT 5
@@ -60,6 +66,7 @@ export async function getVersionDownloads(
           FROM \`bigquery-public-data.pypi.file_downloads\`
           WHERE file.project = @project
             AND DATE(timestamp) BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY) AND CURRENT_DATE()
+            ${UV_FILTER}
           GROUP BY version
           ORDER BY total DESC
           LIMIT 5
@@ -91,6 +98,7 @@ export async function getVersionDownloads(
         WHERE file.project = @project
           AND DATE(timestamp) BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL @days DAY) AND CURRENT_DATE()
           AND file.version IN UNNEST(@versions)
+          ${UV_FILTER}
         GROUP BY date, version
         ORDER BY date
       `,
