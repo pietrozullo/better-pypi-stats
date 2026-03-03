@@ -1,10 +1,47 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
+import { useRef, createContext, useContext, type ReactNode } from "react";
 import { toPng, toSvg } from "html-to-image";
 import { ImageIcon, FileCode } from "lucide-react";
 import { useChartColors } from "./use-chart-colors";
 import { Logo } from "@/components/logo";
+
+interface ExportContextValue {
+  exportAs: (format: "png" | "svg") => void;
+}
+
+const ExportContext = createContext<ExportContextValue>({
+  exportAs: () => {},
+});
+
+export function useChartExport() {
+  return useContext(ExportContext);
+}
+
+/** Inline export buttons - place these inside your chart header */
+export function ExportButtons() {
+  const { exportAs } = useChartExport();
+  return (
+    <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+      <button
+        onClick={() => exportAs("png")}
+        className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        title="Export as PNG"
+      >
+        <ImageIcon className="h-3 w-3" />
+        PNG
+      </button>
+      <button
+        onClick={() => exportAs("svg")}
+        className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        title="Export as SVG"
+      >
+        <FileCode className="h-3 w-3" />
+        SVG
+      </button>
+    </div>
+  );
+}
 
 interface ChartExportWrapperProps {
   children: ReactNode;
@@ -58,7 +95,7 @@ export function ChartExportWrapper({ children, filename }: ChartExportWrapperPro
   }
 
   return (
-    <div className="group relative">
+    <ExportContext.Provider value={{ exportAs }}>
       <div ref={chartRef}>
         {children}
         <div
@@ -72,25 +109,6 @@ export function ChartExportWrapper({ children, filename }: ChartExportWrapperPro
           </span>
         </div>
       </div>
-
-      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-md border border-border bg-card/90 p-0.5 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
-        <button
-          onClick={() => exportAs("png")}
-          className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          title="Export as PNG"
-        >
-          <ImageIcon className="h-3 w-3" />
-          PNG
-        </button>
-        <button
-          onClick={() => exportAs("svg")}
-          className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          title="Export as SVG"
-        >
-          <FileCode className="h-3 w-3" />
-          SVG
-        </button>
-      </div>
-    </div>
+    </ExportContext.Provider>
   );
 }

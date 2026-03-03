@@ -17,7 +17,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Filter, Check } from "lucide-react";
-import { ChartExportWrapper } from "./chart-export";
+import { ChartExportWrapper, ExportButtons } from "./chart-export";
 import { DateTooltip } from "./chart-tooltip";
 import { useChartColors } from "./use-chart-colors";
 import { formatNumber, formatDateShort, calculateMovingAverage, calculateTrendLine, CHART_COLORS, aggregateByGranularity, aggregateBreakdownByGranularity } from "@/lib/utils";
@@ -397,6 +397,7 @@ export function DownloadChart({
                 </button>
               ))}
             </div>
+            <ExportButtons />
           </div>
         </CardHeader>
         <CardContent>

@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatNumber, CHART_COLORS } from "@/lib/utils";
-import { ChartExportWrapper } from "./chart-export";
+import { ChartExportWrapper, ExportButtons } from "./chart-export";
 import { ChartTooltip } from "./chart-tooltip";
 import { useChartColors } from "./use-chart-colors";
 
@@ -26,8 +26,9 @@ export function PythonMinorChart({ data, packageName = "chart" }: PythonMinorCha
   return (
     <ChartExportWrapper filename={`${packageName}-python-minor-versions`}>
       <Card data-chart-card>
-        <CardHeader className="pb-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">Downloads by Python Minor Version</CardTitle>
+          <ExportButtons />
         </CardHeader>
         <CardContent>
           <div className="h-[280px]">

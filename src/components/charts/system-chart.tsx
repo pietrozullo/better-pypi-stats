@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CHART_COLORS } from "@/lib/utils";
-import { ChartExportWrapper } from "./chart-export";
+import { ChartExportWrapper, ExportButtons } from "./chart-export";
 import { PieTooltip } from "./chart-tooltip";
 
 interface SystemChartProps {
@@ -24,8 +24,9 @@ export function SystemChart({ data, packageName = "chart" }: SystemChartProps) {
   return (
     <ChartExportWrapper filename={`${packageName}-os-breakdown`}>
       <Card data-chart-card>
-        <CardHeader className="pb-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">Downloads by OS</CardTitle>
+          <ExportButtons />
         </CardHeader>
         <CardContent>
           <div className="h-[280px]">

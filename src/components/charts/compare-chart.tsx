@@ -14,7 +14,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatNumber, formatDateShort, CHART_COLORS } from "@/lib/utils";
-import { ChartExportWrapper } from "./chart-export";
+import { ChartExportWrapper, ExportButtons } from "./chart-export";
 import { DateTooltip } from "./chart-tooltip";
 import { useChartColors } from "./use-chart-colors";
 
@@ -96,6 +96,7 @@ export function CompareChart({ packages }: CompareChartProps) {
             >
               Normalize
             </Button>
+            <ExportButtons />
           </div>
         </CardHeader>
         <CardContent>
