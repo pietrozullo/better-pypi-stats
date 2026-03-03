@@ -95,8 +95,8 @@ export function DownloadChart({
     }
   }, [packageName]);
 
-  const fetchHistoryData = useCallback(async (days: number) => {
-    const cacheKey = `history-${days}`;
+  const fetchHistoryData = useCallback(async (days: number, uvFilter: boolean) => {
+    const cacheKey = `history-${days}-${uvFilter}`;
     if (fetchCache.current.has(cacheKey)) {
       const cached = fetchCache.current.get(cacheKey) as { data: { date: string; downloads: number }[] };
       setExtendedData(cached.data);
@@ -104,7 +104,7 @@ export function DownloadChart({
     }
     setLoadingExtended(true);
     try {
-      const url = `/api/pypi/${encodeURIComponent(packageName)}/history?days=${days}`;
+      const url = `/api/pypi/${encodeURIComponent(packageName)}/history?days=${days}&excludeUv=${uvFilter}`;
       const json = await (await fetch(url)).json();
       if (json.available && json.data) {
         fetchCache.current.set(cacheKey, { data: json.data });
@@ -120,11 +120,14 @@ export function DownloadChart({
   // Fetch data when range/breakdown/filter changes
   useEffect(() => {
     if (activeBreakdown === "version") {
-      // Always fetch version data from API (with excludeUv param)
-      // For <= 180 days, the server-side pre-fetch didn't have excludeUv option
       fetchVersionData(Math.max(dateRange, 90), excludeUv);
-    } else if (dateRange > 180 && !activeBreakdown) {
-      fetchHistoryData(dateRange);
+    } else if (excludeUv || dateRange > 180) {
+      // When excludeUv is on, we always need BigQuery (pypistats has no installer filter)
+      // When dateRange > 180, we need BigQuery for extended data
+      fetchHistoryData(Math.max(dateRange, 90), excludeUv);
+    } else {
+      // Using pypistats data, clear any BigQuery override
+      setExtendedData(null);
     }
   }, [dateRange, activeBreakdown, excludeUv, fetchVersionData, fetchHistoryData]);
 
@@ -132,8 +135,8 @@ export function DownloadChart({
     setDateRange(days);
   }
 
-  // Use extended data when available and range > 180 days, otherwise use pypistats data
-  const sourceData = dateRange > 180 && extendedData ? extendedData : data;
+  // Use BigQuery data when: extended range (>180D) or excludeUv is active
+  const sourceData = (dateRange > 180 || excludeUv) && extendedData ? extendedData : data;
 
   const filteredData = useMemo(() => {
     const cutoff = sourceData.length - dateRange;
@@ -265,20 +268,18 @@ export function DownloadChart({
                 ))}
               </div>
             )}
-            {/* Exclude uv toggle - only for version breakdown */}
-            {isBreakdownMode && activeBreakdown === "version" && (
-              <button
-                onClick={() => setExcludeUv(!excludeUv)}
-                className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
-                  excludeUv
-                    ? "border-warning text-warning"
-                    : "border-border text-muted-foreground hover:text-foreground"
-                }`}
-                title="uv downloads all versions during dependency resolution, which can inflate counts equally across versions. Toggle this to see only pip/poetry installs."
-              >
-                {excludeUv ? "uv excluded" : "incl. uv"}
-              </button>
-            )}
+            {/* Exclude uv toggle - global filter for all views */}
+            <button
+              onClick={() => setExcludeUv(!excludeUv)}
+              className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
+                excludeUv
+                  ? "border-warning text-warning"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+              title="Exclude uv resolver downloads. uv downloads all versions during dependency resolution, which can inflate download counts. Toggle to see only pip/poetry installs."
+            >
+              {excludeUv ? "uv excluded" : "incl. uv"}
+            </button>
             {/* Category filter dropdown */}
             {isBreakdownMode && currentBreakdown.categories.length > 2 && (
               <div ref={filterRef} className="relative">

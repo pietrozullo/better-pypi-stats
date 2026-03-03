@@ -7,6 +7,7 @@ export async function GET(
 ) {
   const { package: pkg } = await params;
   const days = parseInt(request.nextUrl.searchParams.get("days") || "365", 10);
+  const excludeUv = request.nextUrl.searchParams.get("excludeUv") === "true";
 
   if (!hasBigQueryCredentials()) {
     return NextResponse.json(
@@ -19,7 +20,7 @@ export async function GET(
   const cappedDays = Math.min(days, 1095);
 
   try {
-    const data = await getOverallDownloads(pkg, cappedDays);
+    const data = await getOverallDownloads(pkg, cappedDays, excludeUv);
     if (!data) {
       return NextResponse.json(
         { available: false, message: "No data found" },

@@ -140,12 +140,16 @@ export async function getVersionDownloads(
  */
 export async function getOverallDownloads(
   pkg: string,
-  days: number = 365
+  days: number = 365,
+  excludeUv: boolean = false
 ): Promise<{ date: string; downloads: number }[] | null> {
   if (!hasBigQueryCredentials()) return null;
 
   try {
     const client = await getClient();
+    const INSTALLER_FILTER = excludeUv
+      ? `AND (details.installer.name IS NULL OR details.installer.name != 'uv')`
+      : "";
 
     const [result] = await client.query({
       query: `
@@ -155,6 +159,7 @@ export async function getOverallDownloads(
         FROM \`bigquery-public-data.pypi.file_downloads\`
         WHERE file.project = @project
           AND DATE(timestamp) BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL @days DAY) AND CURRENT_DATE()
+          ${INSTALLER_FILTER}
         GROUP BY date
         ORDER BY date
       `,
