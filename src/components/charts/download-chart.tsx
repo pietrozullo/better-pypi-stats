@@ -203,10 +203,13 @@ export function DownloadChart({
         const downloads = d.downloads as number;
         return {
           ...d,
-          // Drop the actual `downloads` value at the last bucket so the area
-          // fill and tooltip don't duplicate the dashed-segment series.
+          // Null out the last value so the solid Area stops at second-to-last.
           downloads: i === lastIdx ? null : downloads,
-          downloadsDashed: i === lastIdx - 1 || i === lastIdx ? downloads : null,
+          // Carry actual values across the whole range so monotone interpolation
+          // produces a smooth curve even at the trailing segment. The Area's
+          // solid stroke renders on top and hides this everywhere except the
+          // last segment (where `downloads` is null and the Area doesn't draw).
+          downloadsDashed: downloads,
           projection: i === lastIdx ? projection.projected : null,
         };
       });
@@ -629,6 +632,19 @@ export function DownloadChart({
                       />
                     }
                   />
+                  {projectionInfo && (
+                    <Line
+                      type="monotone"
+                      dataKey="downloadsDashed"
+                      stroke={color}
+                      strokeWidth={1.5}
+                      strokeDasharray="5 4"
+                      dot={false}
+                      activeDot={false}
+                      isAnimationActive={false}
+                      tooltipType="none"
+                    />
+                  )}
                   <Area
                     type="monotone"
                     dataKey="downloads"
@@ -659,26 +675,14 @@ export function DownloadChart({
                     />
                   )}
                   {projectionInfo && (
-                    <>
-                      <Line
-                        type="monotone"
-                        dataKey="downloadsDashed"
-                        stroke={color}
-                        strokeWidth={1.5}
-                        strokeDasharray="5 4"
-                        dot={false}
-                        activeDot={{ r: 3, fill: color }}
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="projection"
-                        stroke="none"
-                        dot={{ r: 4, fill: color, strokeWidth: 0 }}
-                        activeDot={{ r: 5, fill: color }}
-                        isAnimationActive={false}
-                      />
-                    </>
+                    <Line
+                      type="monotone"
+                      dataKey="projection"
+                      stroke="none"
+                      dot={{ r: 4, fill: color, strokeWidth: 0 }}
+                      activeDot={{ r: 5, fill: color }}
+                      isAnimationActive={false}
+                    />
                   )}
                 </ComposedChart>
               )}

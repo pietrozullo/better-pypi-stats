@@ -159,20 +159,14 @@ export function CompareChart({ packages }: CompareChartProps) {
         if (!proj) return;
         const dashedKey = `${label}__dashed`;
         const projKey = `${label}__projection`;
-        const lastValue = series[lastIdx][label] as number;
         series.forEach((row, i) => {
-          // Dashed last segment carries the actual values at second-to-last and last.
-          if (i === lastIdx - 1 || i === lastIdx) row[dashedKey] = row[label] as number;
-          else row[dashedKey] = null;
-          // Projected total only at the last bucket.
+          // Carry actual values across the entire range so monotone interpolation
+          // produces a smooth curve; the solid line on top hides this everywhere
+          // except the final segment (where we null the main series).
+          row[dashedKey] = row[label] as number;
           row[projKey] = i === lastIdx ? proj.projected : null;
-          // Drop the actual last value from the main series so the solid line
-          // ends at the second-to-last point and the tooltip doesn't dupe.
           if (i === lastIdx) row[label] = null;
         });
-        // Reference lastValue to silence unused-var warning in case TS is strict;
-        // it's already captured by the dashed key above.
-        void lastValue;
       });
     }
     return series;
@@ -295,6 +289,22 @@ export function CompareChart({ packages }: CompareChartProps) {
                     <span className="text-xs">{value}</span>
                   )}
                 />
+                {showProjection &&
+                  packages.map((pkg) => (
+                    <Line
+                      key={`${displayKey(pkg)}__dashed`}
+                      type="monotone"
+                      dataKey={`${getLabel(pkg)}__dashed`}
+                      stroke={pkg.color}
+                      strokeWidth={2}
+                      strokeDasharray="5 4"
+                      dot={false}
+                      activeDot={false}
+                      legendType="none"
+                      tooltipType="none"
+                      isAnimationActive={false}
+                    />
+                  ))}
                 {packages.map((pkg) => (
                   <Line
                     key={displayKey(pkg)}
@@ -306,21 +316,6 @@ export function CompareChart({ packages }: CompareChartProps) {
                     activeDot={{ r: 3 }}
                   />
                 ))}
-                {showProjection &&
-                  packages.map((pkg) => (
-                    <Line
-                      key={`${displayKey(pkg)}__dashed`}
-                      type="monotone"
-                      dataKey={`${getLabel(pkg)}__dashed`}
-                      stroke={pkg.color}
-                      strokeWidth={2}
-                      strokeDasharray="5 4"
-                      dot={false}
-                      activeDot={{ r: 3 }}
-                      legendType="none"
-                      isAnimationActive={false}
-                    />
-                  ))}
                 {showProjection &&
                   packages.map((pkg) => (
                     <Line
