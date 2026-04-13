@@ -151,13 +151,23 @@ export function SearchBox({ large = false, autoFocus = false, className, registr
             large ? "ml-3 text-lg" : "ml-2 text-sm"
           )}
         />
-        {query && (
+        {query ? (
           <button
             onClick={() => handleSearch(query)}
             className="shrink-0 rounded-md bg-chart-1 p-1.5 text-white transition-colors hover:bg-chart-1/90"
           >
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
+        ) : (
+          <kbd
+            className={cn(
+              "pointer-events-none hidden shrink-0 items-center gap-1 rounded border border-border bg-secondary/60 font-mono text-muted-foreground sm:inline-flex",
+              large ? "px-2 py-1 text-xs" : "px-1.5 py-0.5 text-[10px]"
+            )}
+            title="Open command palette"
+          >
+            <span className="text-sm leading-none">⌘</span>K
+          </kbd>
         )}
       </div>
 
