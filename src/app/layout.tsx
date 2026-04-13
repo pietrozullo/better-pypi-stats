@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Navbar } from "@/components/layout/navbar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { McpWidget } from "@/components/mcp-widget";
+import { CommandPalette } from "@/components/command-palette";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -33,6 +34,7 @@ export default function RootLayout({
         <ThemeProvider>
           <Navbar />
           <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+          <CommandPalette />
           <McpWidget />
         </ThemeProvider>
       </body>
