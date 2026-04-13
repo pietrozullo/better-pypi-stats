@@ -17,6 +17,7 @@ import {
   Bar,
   BarChart,
   Cell,
+  Customized,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,36 @@ import {
 } from "@/lib/utils";
 import type { Granularity } from "@/lib/utils";
 import type { BreakdownTimeSeries } from "@/lib/types";
+
+/**
+ * Recharts `Customized` child that injects a <clipPath> spanning the plot
+ * area from the left edge to the x position of `stopDate`. Used to render
+ * the solid Area with the same data as the dashed projection line, while
+ * visually masking out the trailing partial-bucket segment.
+ */
+function ProjectionClip(props: {
+  id: string;
+  stopDate: string;
+  xAxisMap?: Record<string, { scale: (value: string) => number; x: number; width: number }>;
+  yAxisMap?: Record<string, { y: number; height: number }>;
+}) {
+  const { id, stopDate, xAxisMap, yAxisMap } = props;
+  if (!xAxisMap || !yAxisMap) return null;
+  const xAxis = xAxisMap[Object.keys(xAxisMap)[0]];
+  const yAxis = yAxisMap[Object.keys(yAxisMap)[0]];
+  if (!xAxis || !yAxis || typeof xAxis.scale !== "function") return null;
+  const stopX = xAxis.scale(stopDate);
+  if (!Number.isFinite(stopX)) return null;
+  const left = xAxis.x;
+  const width = Math.max(0, stopX - left);
+  return (
+    <defs>
+      <clipPath id={id}>
+        <rect x={left} y={yAxis.y} width={width} height={yAxis.height} />
+      </clipPath>
+    </defs>
+  );
+}
 
 interface BreakdownOption {
   label: string;
@@ -203,12 +234,11 @@ export function DownloadChart({
         const downloads = d.downloads as number;
         return {
           ...d,
-          // Null out the last value so the solid Area stops at second-to-last.
-          downloads: i === lastIdx ? null : downloads,
-          // Carry actual values across the whole range so monotone interpolation
-          // produces a smooth curve even at the trailing segment. The Area's
-          // solid stroke renders on top and hides this everywhere except the
-          // last segment (where `downloads` is null and the Area doesn't draw).
+          // Both series carry actual values across the entire range so monotone
+          // interpolation produces identical curves. The dashed Line renders
+          // first; the solid Area renders on top but is clip-pathed to end at
+          // the second-to-last x, leaving only the dashed last segment visible.
+          downloads,
           downloadsDashed: downloads,
           projection: i === lastIdx ? projection.projected : null,
         };
@@ -632,6 +662,17 @@ export function DownloadChart({
                       />
                     }
                   />
+                  {projectionInfo && chartData.length >= 2 && (
+                    <Customized
+                      component={(props: Record<string, unknown>) => (
+                        <ProjectionClip
+                          id={`proj-clip-${packageName}`}
+                          stopDate={String((chartData[chartData.length - 2] as { date: string }).date)}
+                          {...props}
+                        />
+                      )}
+                    />
+                  )}
                   {projectionInfo && (
                     <Line
                       type="monotone"
@@ -653,6 +694,7 @@ export function DownloadChart({
                     strokeWidth={1.5}
                     dot={false}
                     activeDot={{ r: 3, fill: color }}
+                    style={projectionInfo ? { clipPath: `url(#proj-clip-${packageName})` } : undefined}
                   />
                   {showMA && (
                     <Line

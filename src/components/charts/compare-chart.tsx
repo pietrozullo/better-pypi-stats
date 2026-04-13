@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   Legend,
   ReferenceLine,
+  Customized,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,30 @@ function displayKey(pkg: { name: string; registry?: string }): string {
   return pkg.registry ? `${pkg.registry}:${pkg.name}` : pkg.name;
 }
 
+function ProjectionClip(props: {
+  id: string;
+  stopDate: string;
+  xAxisMap?: Record<string, { scale: (value: string) => number; x: number; width: number }>;
+  yAxisMap?: Record<string, { y: number; height: number }>;
+}) {
+  const { id, stopDate, xAxisMap, yAxisMap } = props;
+  if (!xAxisMap || !yAxisMap) return null;
+  const xAxis = xAxisMap[Object.keys(xAxisMap)[0]];
+  const yAxis = yAxisMap[Object.keys(yAxisMap)[0]];
+  if (!xAxis || !yAxis || typeof xAxis.scale !== "function") return null;
+  const stopX = xAxis.scale(stopDate);
+  if (!Number.isFinite(stopX)) return null;
+  const left = xAxis.x;
+  const width = Math.max(0, stopX - left);
+  return (
+    <defs>
+      <clipPath id={id}>
+        <rect x={left} y={yAxis.y} width={width} height={yAxis.height} />
+      </clipPath>
+    </defs>
+  );
+}
+
 export function CompareChart({ packages }: CompareChartProps) {
   const [normalized, setNormalized] = useState(false);
   const [smoothed, setSmoothed] = useState(true);
@@ -80,8 +105,8 @@ export function CompareChart({ packages }: CompareChartProps) {
     });
   }
 
-  const chartData = useMemo(() => {
-    if (packages.length === 0) return [];
+  const { chartData, pkgsWithProjection } = useMemo(() => {
+    if (packages.length === 0) return { chartData: [], pkgsWithProjection: new Set<string>() };
 
     // Build raw daily data
     const allDates = new Set<string>();
@@ -138,6 +163,7 @@ export function CompareChart({ packages }: CompareChartProps) {
 
     // Per-package linear-extrapolation projection for the trailing partial bucket.
     // Suppressed in growth/normalized modes — projection isn't meaningful there.
+    const pkgsWithProjection = new Set<string>();
     if (!growthMode && !normalized && series.length >= 2) {
       const lastIdx = series.length - 1;
       packages.forEach((pkg) => {
@@ -157,22 +183,26 @@ export function CompareChart({ packages }: CompareChartProps) {
               ).map((r) => ({ date: String(r.date), downloads: Number(r[label] || 0) }));
         const proj = projectPartialBucket(pkgAgg, granularity, latest);
         if (!proj) return;
+        pkgsWithProjection.add(label);
         const dashedKey = `${label}__dashed`;
         const projKey = `${label}__projection`;
         series.forEach((row, i) => {
-          // Carry actual values across the entire range so monotone interpolation
-          // produces a smooth curve; the solid line on top hides this everywhere
-          // except the final segment (where we null the main series).
+          // Both the dashed and the main series carry actual values across the
+          // entire range so their monotone curves match exactly. The solid Line
+          // is clip-pathed at the second-to-last x to hide its trailing segment.
           row[dashedKey] = row[label] as number;
           row[projKey] = i === lastIdx ? proj.projected : null;
-          if (i === lastIdx) row[label] = null;
         });
       });
     }
-    return series;
+    return { chartData: series, pkgsWithProjection };
   }, [packages, normalized, smoothed, dateRange, granularity, growthMode, getLabel, labels]);
 
   const showProjection = !growthMode && !normalized && granularity !== "day";
+  const stopDate =
+    showProjection && chartData.length >= 2
+      ? String((chartData[chartData.length - 2] as { date: string }).date)
+      : null;
 
   const exportFilename = `compare-${packages.map((p) => p.name).join("-vs-")}${growthMode ? "-growth" : ""}`;
 
@@ -289,33 +319,46 @@ export function CompareChart({ packages }: CompareChartProps) {
                     <span className="text-xs">{value}</span>
                   )}
                 />
+                {stopDate && (
+                  <Customized
+                    component={(props: Record<string, unknown>) => (
+                      <ProjectionClip id="proj-clip-compare" stopDate={stopDate} {...props} />
+                    )}
+                  />
+                )}
                 {showProjection &&
-                  packages.map((pkg) => (
+                  packages.map((pkg) =>
+                    pkgsWithProjection.has(getLabel(pkg)) ? (
+                      <Line
+                        key={`${displayKey(pkg)}__dashed`}
+                        type="monotone"
+                        dataKey={`${getLabel(pkg)}__dashed`}
+                        stroke={pkg.color}
+                        strokeWidth={2}
+                        strokeDasharray="5 4"
+                        dot={false}
+                        activeDot={false}
+                        legendType="none"
+                        tooltipType="none"
+                        isAnimationActive={false}
+                      />
+                    ) : null
+                  )}
+                {packages.map((pkg) => {
+                  const hasProj = pkgsWithProjection.has(getLabel(pkg));
+                  return (
                     <Line
-                      key={`${displayKey(pkg)}__dashed`}
+                      key={displayKey(pkg)}
                       type="monotone"
-                      dataKey={`${getLabel(pkg)}__dashed`}
+                      dataKey={getLabel(pkg)}
                       stroke={pkg.color}
                       strokeWidth={2}
-                      strokeDasharray="5 4"
                       dot={false}
-                      activeDot={false}
-                      legendType="none"
-                      tooltipType="none"
-                      isAnimationActive={false}
+                      activeDot={{ r: 3 }}
+                      style={hasProj ? { clipPath: "url(#proj-clip-compare)" } : undefined}
                     />
-                  ))}
-                {packages.map((pkg) => (
-                  <Line
-                    key={displayKey(pkg)}
-                    type="monotone"
-                    dataKey={getLabel(pkg)}
-                    stroke={pkg.color}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 3 }}
-                  />
-                ))}
+                  );
+                })}
                 {showProjection &&
                   packages.map((pkg) => (
                     <Line
