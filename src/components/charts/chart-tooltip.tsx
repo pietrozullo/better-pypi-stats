@@ -1,6 +1,11 @@
 "use client";
 
-import { formatNumber, formatDateShort } from "@/lib/utils";
+import {
+  formatNumber,
+  formatDateForGranularity,
+  formatPercentChange,
+} from "@/lib/utils";
+import type { Granularity } from "@/lib/utils";
 
 const tooltipStyles = {
   wrapper: "rounded-lg border border-[var(--tooltip-border)] bg-[var(--tooltip-bg)] px-3 py-2 shadow-lg",
@@ -13,7 +18,7 @@ const tooltipStyles = {
 
 interface TooltipEntry {
   name?: string;
-  value?: number;
+  value?: number | null;
   color?: string;
   dataKey?: string | number;
   fill?: string;
@@ -25,7 +30,7 @@ interface CustomTooltipProps {
   payload?: TooltipEntry[];
   label?: string | number;
   labelFormatter?: (label: string) => string;
-  valueFormatter?: (value: number, name: string) => string;
+  valueFormatter?: (value: number | null, name: string) => string;
   nameFormatter?: (name: string) => string;
   sortByValue?: boolean;
 }
@@ -46,7 +51,7 @@ export function ChartTooltip({
     : String(label ?? "");
 
   const entries = sortByValue
-    ? [...payload].sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0))
+    ? [...payload].sort((a, b) => Number(b.value ?? Number.NEGATIVE_INFINITY) - Number(a.value ?? Number.NEGATIVE_INFINITY))
     : payload;
 
   return (
@@ -55,9 +60,12 @@ export function ChartTooltip({
       {entries.map((entry, i) => {
         const rawName = String(entry.name ?? entry.dataKey ?? "");
         const name = nameFormatter ? nameFormatter(rawName) : rawName;
+        const numericValue = entry.value == null ? null : Number(entry.value);
         const value = valueFormatter
-          ? valueFormatter(Number(entry.value ?? 0), rawName)
-          : formatNumber(Number(entry.value ?? 0));
+          ? valueFormatter(numericValue, rawName)
+          : numericValue == null
+            ? "n/a"
+            : formatNumber(numericValue);
 
         return (
           <div key={i} className={tooltipStyles.item}>
@@ -74,11 +82,22 @@ export function ChartTooltip({
   );
 }
 
-export function DateTooltip(props: CustomTooltipProps) {
+interface DateTooltipProps extends CustomTooltipProps {
+  granularity?: Granularity;
+  growthMode?: boolean;
+}
+
+export function DateTooltip({
+  granularity = "day",
+  growthMode = false,
+  valueFormatter,
+  ...props
+}: DateTooltipProps) {
   return (
     <ChartTooltip
       {...props}
-      labelFormatter={(label) => formatDateShort(label)}
+      labelFormatter={(label) => formatDateForGranularity(label, granularity, "tooltip")}
+      valueFormatter={valueFormatter || ((value) => growthMode ? formatPercentChange(value) : value == null ? "n/a" : formatNumber(value))}
     />
   );
 }

@@ -27,6 +27,44 @@ export function formatDateShort(date: string): string {
   });
 }
 
+export type Granularity = "day" | "week" | "month" | "year";
+
+export function formatPercentChange(
+  value: number | null | undefined,
+  digits: number = 1
+): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  const normalized = Math.abs(value) < 0.05 ? 0 : value;
+  const sign = normalized > 0 ? "+" : "";
+  return `${sign}${normalized.toFixed(digits)}%`;
+}
+
+export function formatDateForGranularity(
+  date: string,
+  granularity: Granularity,
+  variant: "tick" | "tooltip" = "tick"
+): string {
+  const parsed = new Date(date);
+
+  if (granularity === "year") {
+    return parsed.getUTCFullYear().toString();
+  }
+
+  if (granularity === "month") {
+    return parsed.toLocaleDateString("en-US", {
+      month: variant === "tick" ? "short" : "long",
+      year: "numeric",
+    });
+  }
+
+  if (granularity === "week") {
+    const formatted = variant === "tick" ? formatDateShort(date) : formatDate(date);
+    return variant === "tick" ? formatted : `Week of ${formatted}`;
+  }
+
+  return variant === "tick" ? formatDateShort(date) : formatDate(date);
+}
+
 export function calculateMovingAverage(
   data: { date: string; downloads: number }[],
   window: number
@@ -64,8 +102,6 @@ export function calculateTrendLine(
   }));
 }
 
-export type Granularity = "day" | "week" | "month";
-
 function getWeekKey(date: string): string {
   // ISO week: Monday-based. Return the Monday date as the key.
   const d = new Date(date);
@@ -79,8 +115,19 @@ function getMonthKey(date: string): string {
   return date.slice(0, 7) + "-01"; // "2025-12-01"
 }
 
+function getYearKey(date: string): string {
+  return date.slice(0, 4) + "-01-01";
+}
+
+function getGranularityKey(date: string, granularity: Granularity): string {
+  if (granularity === "week") return getWeekKey(date);
+  if (granularity === "month") return getMonthKey(date);
+  if (granularity === "year") return getYearKey(date);
+  return date;
+}
+
 /**
- * Aggregate daily data into weekly or monthly buckets.
+ * Aggregate daily data into larger time buckets.
  * Works for simple {date, downloads} arrays.
  */
 export function aggregateByGranularity(
@@ -89,10 +136,9 @@ export function aggregateByGranularity(
 ): { date: string; downloads: number }[] {
   if (granularity === "day") return data;
 
-  const keyFn = granularity === "week" ? getWeekKey : getMonthKey;
   const map = new Map<string, number>();
   for (const point of data) {
-    const key = keyFn(point.date);
+    const key = getGranularityKey(point.date, granularity);
     map.set(key, (map.get(key) || 0) + point.downloads);
   }
   return Array.from(map.entries())
@@ -110,11 +156,10 @@ export function aggregateBreakdownByGranularity(
 ): Record<string, string | number>[] {
   if (granularity === "day") return data;
 
-  const keyFn = granularity === "week" ? getWeekKey : getMonthKey;
   const map = new Map<string, Record<string, number>>();
 
   for (const point of data) {
-    const key = keyFn(String(point.date));
+    const key = getGranularityKey(String(point.date), granularity);
     if (!map.has(key)) map.set(key, {});
     const bucket = map.get(key)!;
     for (const cat of categories) {
@@ -125,6 +170,42 @@ export function aggregateBreakdownByGranularity(
   return Array.from(map.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, values]) => ({ date, ...values }));
+}
+
+function getGrowthValue(current: number, previous?: number): number | null {
+  if (previous == null) return null;
+  if (previous === 0) return current === 0 ? 0 : null;
+
+  const growth = ((current - previous) / previous) * 100;
+  return Math.abs(growth) < 0.0001 ? 0 : growth;
+}
+
+export function calculateGrowthByPeriod(
+  data: { date: string; downloads: number }[]
+): { date: string; downloads: number | null }[] {
+  return data.map((point, index) => ({
+    date: point.date,
+    downloads: getGrowthValue(point.downloads, data[index - 1]?.downloads),
+  }));
+}
+
+export function calculateBreakdownGrowthByPeriod(
+  data: Record<string, string | number>[],
+  categories: string[]
+): Record<string, string | number | null>[] {
+  return data.map((point, index) => {
+    const previous = data[index - 1];
+    const next: Record<string, string | number | null> = { date: String(point.date) };
+
+    for (const category of categories) {
+      next[category] = getGrowthValue(
+        Number(point[category] || 0),
+        previous ? Number(previous[category] || 0) : undefined
+      );
+    }
+
+    return next;
+  });
 }
 
 export const CHART_COLORS = [

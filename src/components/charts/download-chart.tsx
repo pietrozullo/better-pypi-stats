@@ -13,6 +13,10 @@ import {
   Legend,
   AreaChart,
   LineChart,
+  ReferenceLine,
+  Bar,
+  BarChart,
+  Cell,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,7 +24,18 @@ import { Loader2, Filter, Check } from "lucide-react";
 import { ChartExportWrapper, ExportButtons } from "./chart-export";
 import { DateTooltip } from "./chart-tooltip";
 import { useChartColors } from "./use-chart-colors";
-import { formatNumber, formatDateShort, calculateMovingAverage, calculateTrendLine, CHART_COLORS, aggregateByGranularity, aggregateBreakdownByGranularity } from "@/lib/utils";
+import {
+  formatNumber,
+  formatPercentChange,
+  formatDateForGranularity,
+  calculateMovingAverage,
+  calculateTrendLine,
+  calculateGrowthByPeriod,
+  calculateBreakdownGrowthByPeriod,
+  CHART_COLORS,
+  aggregateByGranularity,
+  aggregateBreakdownByGranularity,
+} from "@/lib/utils";
 import type { Granularity } from "@/lib/utils";
 import type { BreakdownTimeSeries } from "@/lib/types";
 
@@ -68,6 +83,7 @@ export function DownloadChart({
   const [loadingExtended, setLoadingExtended] = useState(false);
   const [excludeUv, setExcludeUv] = useState(false);
   const [granularity, setGranularity] = useState<Granularity>("day");
+  const [growthMode, setGrowthMode] = useState(false);
   const chartColors = useChartColors();
   const fetchCache = useRef(new Map<string, unknown>());
 
@@ -135,6 +151,17 @@ export function DownloadChart({
     setDateRange(days);
   }
 
+  function toggleGrowthMode() {
+    setGrowthMode((prev) => {
+      const next = !prev;
+      if (next) {
+        setShowMA(false);
+        setShowTrend(false);
+      }
+      return next;
+    });
+  }
+
   // Use BigQuery data when: extended range (>180D) or excludeUv is active
   const sourceData = (dateRange > 180 || excludeUv) && extendedData ? extendedData : data;
 
@@ -146,9 +173,10 @@ export function DownloadChart({
   const chartData = useMemo(() => {
     // Aggregate by granularity first, then apply MA/trend on aggregated data
     const aggregated = aggregateByGranularity(filteredData, granularity);
+
     let result = aggregated.map((d) => ({ ...d }));
     if (showMA) {
-      const window = granularity === "day" ? 7 : granularity === "week" ? 4 : 3;
+      const window = granularity === "day" ? 7 : granularity === "week" ? 4 : granularity === "month" ? 3 : 2;
       const withMA = calculateMovingAverage(aggregated, window);
       result = withMA;
     }
@@ -162,6 +190,12 @@ export function DownloadChart({
     return result;
   }, [filteredData, showMA, showTrend, granularity]);
 
+  const growthChartData = useMemo(() => {
+    if (!growthMode) return [];
+    const aggregated = aggregateByGranularity(filteredData, granularity);
+    return calculateGrowthByPeriod(aggregated);
+  }, [filteredData, granularity, growthMode]);
+
   // Get the active breakdown data (filtered by date range)
   const currentBreakdown = useMemo(() => {
     if (!activeBreakdown) return null;
@@ -170,11 +204,15 @@ export function DownloadChart({
     if (activeBreakdown === "version" && extendedVersionData) {
       const cutoff = extendedVersionData.data.length - dateRange;
       const sliced = extendedVersionData.data.slice(Math.max(0, cutoff));
+      const aggregated = aggregateBreakdownByGranularity(sliced, extendedVersionData.categories, granularity);
       return {
         label: "Version",
         key: "version",
         mode: "lines" as const,
-        data: aggregateBreakdownByGranularity(sliced, extendedVersionData.categories, granularity),
+        data: aggregated,
+        growthData: growthMode
+          ? calculateBreakdownGrowthByPeriod(aggregated, extendedVersionData.categories)
+          : [],
         categories: extendedVersionData.categories,
       };
     }
@@ -183,12 +221,16 @@ export function DownloadChart({
     if (!bd) return null;
     const cutoff = bd.data.length - dateRange;
     const sliced = bd.data.slice(Math.max(0, cutoff));
+    const aggregated = aggregateBreakdownByGranularity(sliced, bd.categories, granularity);
     return {
       ...bd,
       mode: bd.mode || "stacked",
-      data: aggregateBreakdownByGranularity(sliced, bd.categories, granularity),
+      data: aggregated,
+      growthData: growthMode
+        ? calculateBreakdownGrowthByPeriod(aggregated, bd.categories)
+        : [],
     };
-  }, [activeBreakdown, breakdowns, dateRange, extendedVersionData, granularity]);
+  }, [activeBreakdown, breakdowns, dateRange, extendedVersionData, granularity, growthMode]);
 
   const isBreakdownMode = currentBreakdown !== null;
 
@@ -235,7 +277,7 @@ export function DownloadChart({
   }
 
   return (
-    <ChartExportWrapper filename={`${packageName}-downloads-${activeBreakdown || "overall"}-${dateRange}d`}>
+    <ChartExportWrapper filename={`${packageName}-downloads-${activeBreakdown || "overall"}-${growthMode ? "growth-" : ""}${dateRange}d`}>
       <Card data-chart-card>
         <CardHeader className="flex flex-col gap-2 pb-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-sm font-medium">{title}</CardTitle>
@@ -280,6 +322,14 @@ export function DownloadChart({
             >
               {excludeUv ? "uv excluded" : "incl. uv"}
             </button>
+            <Button
+              variant={growthMode ? "secondary" : "ghost"}
+              size="sm"
+              onClick={toggleGrowthMode}
+              className="text-xs h-7"
+            >
+              Growth
+            </Button>
             {/* Category filter dropdown */}
             {isBreakdownMode && currentBreakdown.categories.length > 2 && (
               <div ref={filterRef} className="relative">
@@ -352,6 +402,7 @@ export function DownloadChart({
                   size="sm"
                   onClick={() => setShowMA(!showMA)}
                   className="text-xs h-7"
+                  disabled={growthMode}
                 >
                   7D MA
                 </Button>
@@ -360,6 +411,7 @@ export function DownloadChart({
                   size="sm"
                   onClick={() => setShowTrend(!showTrend)}
                   className="text-xs h-7"
+                  disabled={growthMode}
                 >
                   Trend
                 </Button>
@@ -369,7 +421,7 @@ export function DownloadChart({
               <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
             )}
             <div className="flex items-center rounded-md border border-border">
-              {(["day", "week", "month"] as const).map((g) => (
+              {(["day", "week", "month", "year"] as const).map((g) => (
                 <button
                   key={g}
                   onClick={() => setGranularity(g)}
@@ -379,7 +431,7 @@ export function DownloadChart({
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {g === "day" ? "D" : g === "week" ? "W" : "M"}
+                  {g === "day" ? "D" : g === "week" ? "W" : g === "month" ? "M" : "Y"}
                 </button>
               ))}
             </div>
@@ -413,7 +465,7 @@ export function DownloadChart({
                   <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
                   <XAxis
                     dataKey="date"
-                    tickFormatter={formatDateShort}
+                    tickFormatter={(value) => formatDateForGranularity(value, granularity)}
                     stroke={chartColors.axis}
                     fontSize={11}
                     tickLine={false}
@@ -429,7 +481,7 @@ export function DownloadChart({
                     axisLine={false}
                     width={55}
                   />
-                  <Tooltip content={<DateTooltip sortByValue />} />
+                  <Tooltip content={<DateTooltip sortByValue granularity={granularity} />} />
                   <Legend
                     formatter={(value: string) => (
                       <span className="text-xs">{value}</span>
@@ -466,7 +518,7 @@ export function DownloadChart({
                   <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
                   <XAxis
                     dataKey="date"
-                    tickFormatter={formatDateShort}
+                    tickFormatter={(value) => formatDateForGranularity(value, granularity)}
                     stroke={chartColors.axis}
                     fontSize={11}
                     tickLine={false}
@@ -482,7 +534,7 @@ export function DownloadChart({
                     axisLine={false}
                     width={55}
                   />
-                  <Tooltip content={<DateTooltip sortByValue />} />
+                  <Tooltip content={<DateTooltip sortByValue granularity={granularity} />} />
                   <Legend
                     formatter={(value: string) => (
                       <span className="text-xs">{value}</span>
@@ -515,7 +567,7 @@ export function DownloadChart({
                   <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
                   <XAxis
                     dataKey="date"
-                    tickFormatter={formatDateShort}
+                    tickFormatter={(value) => formatDateForGranularity(value, granularity)}
                     stroke={chartColors.axis}
                     fontSize={11}
                     tickLine={false}
@@ -534,8 +586,13 @@ export function DownloadChart({
                   <Tooltip
                     content={
                       <DateTooltip
+                        granularity={granularity}
                         nameFormatter={(name) =>
-                          name === "movingAvg" ? "7D Average" : name === "trend" ? "Trend" : "Downloads"
+                          name === "movingAvg"
+                            ? "7D Average"
+                            : name === "trend"
+                              ? "Trend"
+                              : "Downloads"
                         }
                       />
                     }
@@ -573,6 +630,92 @@ export function DownloadChart({
               )}
             </ResponsiveContainer>
           </div>
+          {growthMode && (
+            <div className="h-[160px] mt-2 border-t border-border pt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                {isBreakdownMode && currentBreakdown.growthData.length > 0 ? (
+                  <LineChart
+                    data={currentBreakdown.growthData}
+                    margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={(value) => formatDateForGranularity(value, granularity)}
+                      stroke={chartColors.axis}
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      interval="preserveStartEnd"
+                      minTickGap={40}
+                    />
+                    <YAxis
+                      tickFormatter={(value) => formatPercentChange(value, 0)}
+                      stroke={chartColors.axis}
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      width={68}
+                    />
+                    <ReferenceLine y={0} stroke={chartColors.axis} strokeDasharray="4 4" />
+                    <Tooltip content={<DateTooltip sortByValue granularity={granularity} growthMode />} />
+                    {currentBreakdown.categories.map((cat, i) =>
+                      hiddenCategories.has(cat) ? null : (
+                        <Line
+                          key={cat}
+                          type="monotone"
+                          dataKey={cat}
+                          stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                          strokeWidth={1.5}
+                          dot={false}
+                          activeDot={{ r: 3 }}
+                        />
+                      )
+                    )}
+                  </LineChart>
+                ) : (
+                  <BarChart data={growthChartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={(value) => formatDateForGranularity(value, granularity)}
+                      stroke={chartColors.axis}
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      interval="preserveStartEnd"
+                      minTickGap={40}
+                    />
+                    <YAxis
+                      tickFormatter={(value) => formatPercentChange(value, 0)}
+                      stroke={chartColors.axis}
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      width={68}
+                    />
+                    <ReferenceLine y={0} stroke={chartColors.axis} strokeDasharray="4 4" />
+                    <Tooltip
+                      content={
+                        <DateTooltip
+                          granularity={granularity}
+                          growthMode
+                          nameFormatter={() => "Growth"}
+                        />
+                      }
+                    />
+                    <Bar dataKey="downloads" radius={[2, 2, 0, 0]}>
+                      {growthChartData.map((entry, i) => {
+                        const v = entry.downloads;
+                        const fill = v == null ? chartColors.axis : v >= 0 ? "#10b981" : "#ef4444";
+                        return <Cell key={i} fill={fill} />;
+                      })}
+                    </Bar>
+                  </BarChart>
+                )}
+              </ResponsiveContainer>
+            </div>
+          )}
         </CardContent>
       </Card>
     </ChartExportWrapper>

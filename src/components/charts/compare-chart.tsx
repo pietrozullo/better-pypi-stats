@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   LineChart,
   Line,
@@ -10,10 +10,17 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceLine,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatNumber, formatDateShort, CHART_COLORS, aggregateBreakdownByGranularity } from "@/lib/utils";
+import {
+  formatNumber,
+  formatPercentChange,
+  formatDateForGranularity,
+  aggregateBreakdownByGranularity,
+  calculateBreakdownGrowthByPeriod,
+} from "@/lib/utils";
 import type { Granularity } from "@/lib/utils";
 import { ChartExportWrapper, ExportButtons } from "./chart-export";
 import { DateTooltip } from "./chart-tooltip";
@@ -45,6 +52,7 @@ export function CompareChart({ packages }: CompareChartProps) {
   const [smoothed, setSmoothed] = useState(true);
   const [dateRange, setDateRange] = useState(180);
   const [granularity, setGranularity] = useState<Granularity>("day");
+  const [growthMode, setGrowthMode] = useState(false);
   const chartColors = useChartColors();
 
   const hasNameCollision = useMemo(() => {
@@ -52,10 +60,24 @@ export function CompareChart({ packages }: CompareChartProps) {
     return names.length !== new Set(names).size;
   }, [packages]);
 
-  const getLabel = (pkg: { name: string; registry?: string }) =>
-    hasNameCollision ? displayKey(pkg) : pkg.name;
+  const getLabel = useCallback(
+    (pkg: { name: string; registry?: string }) =>
+      hasNameCollision ? displayKey(pkg) : pkg.name,
+    [hasNameCollision]
+  );
 
   const labels = useMemo(() => packages.map(getLabel), [packages, getLabel]);
+
+  function toggleGrowthMode() {
+    setGrowthMode((prev) => {
+      const next = !prev;
+      if (next) {
+        setSmoothed(false);
+        setNormalized(false);
+      }
+      return next;
+    });
+  }
 
   const chartData = useMemo(() => {
     if (packages.length === 0) return [];
@@ -79,10 +101,10 @@ export function CompareChart({ packages }: CompareChartProps) {
         const entry = pkg.dailyDownloads.find((d) => d.date === date);
         let value = entry?.downloads || 0;
 
-        if (smoothed) {
+        if (!growthMode && smoothed) {
           const idx = pkg.dailyDownloads.findIndex((d) => d.date === date);
           if (idx >= 0) {
-            const window = granularity === "day" ? 7 : granularity === "week" ? 4 : 3;
+            const window = granularity === "day" ? 7 : granularity === "week" ? 4 : granularity === "month" ? 3 : 2;
             const start = Math.max(0, idx - window + 1);
             const slice = pkg.dailyDownloads.slice(start, idx + 1);
             value = Math.round(
@@ -91,7 +113,7 @@ export function CompareChart({ packages }: CompareChartProps) {
           }
         }
 
-        if (normalized) {
+        if (!growthMode && normalized) {
           const max = Math.max(
             ...pkg.dailyDownloads.map((d) => d.downloads),
             1
@@ -106,12 +128,13 @@ export function CompareChart({ packages }: CompareChartProps) {
 
     // Apply granularity aggregation
     if (granularity !== "day") {
-      return aggregateBreakdownByGranularity(rawData, labels, granularity);
+      const aggregated = aggregateBreakdownByGranularity(rawData, labels, granularity);
+      return growthMode ? calculateBreakdownGrowthByPeriod(aggregated, labels) : aggregated;
     }
-    return rawData;
-  }, [packages, normalized, smoothed, dateRange, granularity, getLabel, labels]);
+    return growthMode ? calculateBreakdownGrowthByPeriod(rawData, labels) : rawData;
+  }, [packages, normalized, smoothed, dateRange, granularity, growthMode, getLabel, labels]);
 
-  const exportFilename = `compare-${packages.map((p) => p.name).join("-vs-")}`;
+  const exportFilename = `compare-${packages.map((p) => p.name).join("-vs-")}${growthMode ? "-growth" : ""}`;
 
   return (
     <ChartExportWrapper filename={exportFilename}>
@@ -124,6 +147,7 @@ export function CompareChart({ packages }: CompareChartProps) {
               size="sm"
               onClick={() => setSmoothed(!smoothed)}
               className="text-xs h-7"
+              disabled={growthMode}
             >
               Smooth
             </Button>
@@ -132,11 +156,20 @@ export function CompareChart({ packages }: CompareChartProps) {
               size="sm"
               onClick={() => setNormalized(!normalized)}
               className="text-xs h-7"
+              disabled={growthMode}
             >
               Normalize
             </Button>
+            <Button
+              variant={growthMode ? "secondary" : "ghost"}
+              size="sm"
+              onClick={toggleGrowthMode}
+              className="text-xs h-7"
+            >
+              Growth
+            </Button>
             <div className="flex items-center rounded-md border border-border">
-              {(["day", "week", "month"] as const).map((g) => (
+              {(["day", "week", "month", "year"] as const).map((g) => (
                 <button
                   key={g}
                   onClick={() => setGranularity(g)}
@@ -146,7 +179,7 @@ export function CompareChart({ packages }: CompareChartProps) {
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {g === "day" ? "D" : g === "week" ? "W" : "M"}
+                  {g === "day" ? "D" : g === "week" ? "W" : g === "month" ? "M" : "Y"}
                 </button>
               ))}
             </div>
@@ -175,7 +208,7 @@ export function CompareChart({ packages }: CompareChartProps) {
                 <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
                 <XAxis
                   dataKey="date"
-                  tickFormatter={formatDateShort}
+                  tickFormatter={(value) => formatDateForGranularity(value, granularity)}
                   stroke={chartColors.axis}
                   fontSize={11}
                   tickLine={false}
@@ -184,19 +217,22 @@ export function CompareChart({ packages }: CompareChartProps) {
                   minTickGap={40}
                 />
                 <YAxis
-                  tickFormatter={(v) => normalized ? `${v}%` : formatNumber(v)}
+                  tickFormatter={(value) => growthMode ? formatPercentChange(value, 0) : normalized ? `${value}%` : formatNumber(value)}
                   stroke={chartColors.axis}
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
-                  width={55}
+                  width={growthMode ? 68 : 55}
                 />
+                {growthMode && <ReferenceLine y={0} stroke={chartColors.axis} strokeDasharray="4 4" />}
                 <Tooltip
                   content={
                     <DateTooltip
+                      granularity={granularity}
+                      growthMode={growthMode}
                       sortByValue
                       valueFormatter={(value) =>
-                        normalized ? `${value}%` : formatNumber(value)
+                        growthMode ? formatPercentChange(value) : normalized ? `${value}%` : value == null ? "n/a" : formatNumber(value)
                       }
                     />
                   }
