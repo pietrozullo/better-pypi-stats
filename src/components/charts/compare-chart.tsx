@@ -157,12 +157,22 @@ export function CompareChart({ packages }: CompareChartProps) {
               ).map((r) => ({ date: String(r.date), downloads: Number(r[label] || 0) }));
         const proj = projectPartialBucket(pkgAgg, granularity, latest);
         if (!proj) return;
+        const dashedKey = `${label}__dashed`;
         const projKey = `${label}__projection`;
+        const lastValue = series[lastIdx][label] as number;
         series.forEach((row, i) => {
-          if (i === lastIdx - 1) row[projKey] = row[label] as number;
-          else if (i === lastIdx) row[projKey] = proj.projected;
-          else row[projKey] = null;
+          // Dashed last segment carries the actual values at second-to-last and last.
+          if (i === lastIdx - 1 || i === lastIdx) row[dashedKey] = row[label] as number;
+          else row[dashedKey] = null;
+          // Projected total only at the last bucket.
+          row[projKey] = i === lastIdx ? proj.projected : null;
+          // Drop the actual last value from the main series so the solid line
+          // ends at the second-to-last point and the tooltip doesn't dupe.
+          if (i === lastIdx) row[label] = null;
         });
+        // Reference lastValue to silence unused-var warning in case TS is strict;
+        // it's already captured by the dashed key above.
+        void lastValue;
       });
     }
     return series;
@@ -268,7 +278,11 @@ export function CompareChart({ packages }: CompareChartProps) {
                       growthMode={growthMode}
                       sortByValue
                       nameFormatter={(name) =>
-                        name.endsWith("__projection") ? `${name.slice(0, -"__projection".length)} (projected)` : name
+                        name.endsWith("__projection")
+                          ? `${name.slice(0, -"__projection".length)} (projected)`
+                          : name.endsWith("__dashed")
+                            ? name.slice(0, -"__dashed".length)
+                            : name
                       }
                       valueFormatter={(value) =>
                         growthMode ? formatPercentChange(value) : normalized ? `${value}%` : value == null ? "n/a" : formatNumber(value)
@@ -295,14 +309,27 @@ export function CompareChart({ packages }: CompareChartProps) {
                 {showProjection &&
                   packages.map((pkg) => (
                     <Line
+                      key={`${displayKey(pkg)}__dashed`}
+                      type="monotone"
+                      dataKey={`${getLabel(pkg)}__dashed`}
+                      stroke={pkg.color}
+                      strokeWidth={2}
+                      strokeDasharray="5 4"
+                      dot={false}
+                      activeDot={{ r: 3 }}
+                      legendType="none"
+                      isAnimationActive={false}
+                    />
+                  ))}
+                {showProjection &&
+                  packages.map((pkg) => (
+                    <Line
                       key={`${displayKey(pkg)}__projection`}
                       type="monotone"
                       dataKey={`${getLabel(pkg)}__projection`}
-                      stroke={pkg.color}
-                      strokeWidth={1.5}
-                      strokeDasharray="5 4"
-                      dot={{ r: 2.5, fill: pkg.color, strokeWidth: 0 }}
-                      activeDot={{ r: 3 }}
+                      stroke="none"
+                      dot={{ r: 3.5, fill: pkg.color, strokeWidth: 0 }}
+                      activeDot={{ r: 4.5, fill: pkg.color }}
                       legendType="none"
                       isAnimationActive={false}
                     />

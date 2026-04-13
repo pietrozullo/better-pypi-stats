@@ -192,20 +192,24 @@ export function DownloadChart({
     }
 
     // Linear-extrapolation projection for an in-progress trailing bucket.
+    // When present:
+    //   - downloadsSolid carries the actual values for all complete buckets
+    //   - downloadsDashed carries the partial last segment (second-to-last → last actual)
+    //   - projection carries a single point at the last x with the extrapolated total
     const projection = latestDate ? projectPartialBucket(aggregated, granularity, latestDate) : null;
     if (projection && result.length >= 2) {
       const lastIdx = result.length - 1;
-      // `projection` line connects the previous (complete) bucket value to the
-      // projected full-period total at the last bucket — drawn dashed.
-      result = result.map((d, i) => ({
-        ...d,
-        projection:
-          i === lastIdx - 1
-            ? (d.downloads as number)
-            : i === lastIdx
-              ? projection.projected
-              : null,
-      }));
+      result = result.map((d, i) => {
+        const downloads = d.downloads as number;
+        return {
+          ...d,
+          // Drop the actual `downloads` value at the last bucket so the area
+          // fill and tooltip don't duplicate the dashed-segment series.
+          downloads: i === lastIdx ? null : downloads,
+          downloadsDashed: i === lastIdx - 1 || i === lastIdx ? downloads : null,
+          projection: i === lastIdx ? projection.projected : null,
+        };
+      });
     }
     return result;
   }, [filteredData, showMA, showTrend, granularity, latestDate]);
@@ -655,16 +659,26 @@ export function DownloadChart({
                     />
                   )}
                   {projectionInfo && (
-                    <Line
-                      type="monotone"
-                      dataKey="projection"
-                      stroke={color}
-                      strokeWidth={1.5}
-                      strokeDasharray="5 4"
-                      dot={{ r: 3, fill: color, strokeWidth: 0 }}
-                      activeDot={{ r: 4, fill: color }}
-                      isAnimationActive={false}
-                    />
+                    <>
+                      <Line
+                        type="monotone"
+                        dataKey="downloadsDashed"
+                        stroke={color}
+                        strokeWidth={1.5}
+                        strokeDasharray="5 4"
+                        dot={false}
+                        activeDot={{ r: 3, fill: color }}
+                        isAnimationActive={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="projection"
+                        stroke="none"
+                        dot={{ r: 4, fill: color, strokeWidth: 0 }}
+                        activeDot={{ r: 5, fill: color }}
+                        isAnimationActive={false}
+                      />
+                    </>
                   )}
                 </ComposedChart>
               )}
