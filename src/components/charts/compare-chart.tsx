@@ -11,7 +11,8 @@ import {
   ResponsiveContainer,
   Legend,
   ReferenceLine,
-  Customized,
+  usePlotArea,
+  useXAxisDomain,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,25 +50,18 @@ function displayKey(pkg: { name: string; registry?: string }): string {
   return pkg.registry ? `${pkg.registry}:${pkg.name}` : pkg.name;
 }
 
-function ProjectionClip(props: {
-  id: string;
-  stopDate: string;
-  xAxisMap?: Record<string, { scale: (value: string) => number; x: number; width: number }>;
-  yAxisMap?: Record<string, { y: number; height: number }>;
-}) {
-  const { id, stopDate, xAxisMap, yAxisMap } = props;
-  if (!xAxisMap || !yAxisMap) return null;
-  const xAxis = xAxisMap[Object.keys(xAxisMap)[0]];
-  const yAxis = yAxisMap[Object.keys(yAxisMap)[0]];
-  if (!xAxis || !yAxis || typeof xAxis.scale !== "function") return null;
-  const stopX = xAxis.scale(stopDate);
-  if (!Number.isFinite(stopX)) return null;
-  const left = xAxis.x;
-  const width = Math.max(0, stopX - left);
+function ProjectionClip({ id, stopDate }: { id: string; stopDate: string }) {
+  const plot = usePlotArea();
+  const domain = useXAxisDomain() as unknown as string[] | undefined;
+  if (!plot || !Array.isArray(domain) || domain.length < 2) return null;
+  const stopIdx = domain.indexOf(stopDate);
+  if (stopIdx < 0) return null;
+  const stopX = plot.x + (stopIdx / (domain.length - 1)) * plot.width;
+  const width = Math.max(0, stopX - plot.x);
   return (
     <defs>
       <clipPath id={id}>
-        <rect x={left} y={yAxis.y} width={width} height={yAxis.height} />
+        <rect x={plot.x} y={plot.y} width={width} height={plot.height} />
       </clipPath>
     </defs>
   );
@@ -319,13 +313,7 @@ export function CompareChart({ packages }: CompareChartProps) {
                     <span className="text-xs">{value}</span>
                   )}
                 />
-                {stopDate && (
-                  <Customized
-                    component={(props: Record<string, unknown>) => (
-                      <ProjectionClip id="proj-clip-compare" stopDate={stopDate} {...props} />
-                    )}
-                  />
-                )}
+                {stopDate && <ProjectionClip id="proj-clip-compare" stopDate={stopDate} />}
                 {showProjection &&
                   packages.map((pkg) =>
                     pkgsWithProjection.has(getLabel(pkg)) ? (

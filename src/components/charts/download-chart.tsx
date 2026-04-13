@@ -17,7 +17,8 @@ import {
   Bar,
   BarChart,
   Cell,
-  Customized,
+  usePlotArea,
+  useXAxisDomain,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,30 +43,28 @@ import type { Granularity } from "@/lib/utils";
 import type { BreakdownTimeSeries } from "@/lib/types";
 
 /**
- * Recharts `Customized` child that injects a <clipPath> spanning the plot
- * area from the left edge to the x position of `stopDate`. Used to render
- * the solid Area with the same data as the dashed projection line, while
- * visually masking out the trailing partial-bucket segment.
+ * Renders an SVG <clipPath> spanning the plot area from the left edge to the
+ * x position of `stopDate`. Applied (via style.clipPath) to the solid Area so
+ * its trailing partial-bucket segment is masked, leaving only the dashed
+ * projection line visible there.
+ *
+ * Must be rendered as a direct child of a recharts chart so the v3 hooks can
+ * read the chart's axis scale and plot area from context.
  */
-function ProjectionClip(props: {
-  id: string;
-  stopDate: string;
-  xAxisMap?: Record<string, { scale: (value: string) => number; x: number; width: number }>;
-  yAxisMap?: Record<string, { y: number; height: number }>;
-}) {
-  const { id, stopDate, xAxisMap, yAxisMap } = props;
-  if (!xAxisMap || !yAxisMap) return null;
-  const xAxis = xAxisMap[Object.keys(xAxisMap)[0]];
-  const yAxis = yAxisMap[Object.keys(yAxisMap)[0]];
-  if (!xAxis || !yAxis || typeof xAxis.scale !== "function") return null;
-  const stopX = xAxis.scale(stopDate);
-  if (!Number.isFinite(stopX)) return null;
-  const left = xAxis.x;
-  const width = Math.max(0, stopX - left);
+function ProjectionClip({ id, stopDate }: { id: string; stopDate: string }) {
+  const plot = usePlotArea();
+  const domain = useXAxisDomain() as unknown as string[] | undefined;
+  if (!plot || !Array.isArray(domain) || domain.length < 2) return null;
+  const stopIdx = domain.indexOf(stopDate);
+  if (stopIdx < 0) return null;
+  // Recharts uses a "point" scale for category axes in line/area charts:
+  // first point at plot.x, last at plot.x + plot.width, evenly spaced.
+  const stopX = plot.x + (stopIdx / (domain.length - 1)) * plot.width;
+  const width = Math.max(0, stopX - plot.x);
   return (
     <defs>
       <clipPath id={id}>
-        <rect x={left} y={yAxis.y} width={width} height={yAxis.height} />
+        <rect x={plot.x} y={plot.y} width={width} height={plot.height} />
       </clipPath>
     </defs>
   );
@@ -663,14 +662,9 @@ export function DownloadChart({
                     }
                   />
                   {projectionInfo && chartData.length >= 2 && (
-                    <Customized
-                      component={(props: Record<string, unknown>) => (
-                        <ProjectionClip
-                          id={`proj-clip-${packageName}`}
-                          stopDate={String((chartData[chartData.length - 2] as { date: string }).date)}
-                          {...props}
-                        />
-                      )}
+                    <ProjectionClip
+                      id={`proj-clip-${packageName}`}
+                      stopDate={String((chartData[chartData.length - 2] as { date: string }).date)}
                     />
                   )}
                   {projectionInfo && (
