@@ -35,6 +35,7 @@ import {
   CHART_COLORS,
   aggregateByGranularity,
   aggregateBreakdownByGranularity,
+  projectPartialBucket,
 } from "@/lib/utils";
 import type { Granularity } from "@/lib/utils";
 import type { BreakdownTimeSeries } from "@/lib/types";
@@ -170,11 +171,13 @@ export function DownloadChart({
     return sourceData.slice(Math.max(0, cutoff));
   }, [sourceData, dateRange]);
 
+  const latestDate = sourceData.length ? sourceData[sourceData.length - 1].date : null;
+
   const chartData = useMemo(() => {
     // Aggregate by granularity first, then apply MA/trend on aggregated data
     const aggregated = aggregateByGranularity(filteredData, granularity);
 
-    let result = aggregated.map((d) => ({ ...d }));
+    let result: Array<Record<string, number | string | null>> = aggregated.map((d) => ({ ...d }));
     if (showMA) {
       const window = granularity === "day" ? 7 : granularity === "week" ? 4 : granularity === "month" ? 3 : 2;
       const withMA = calculateMovingAverage(aggregated, window);
@@ -187,8 +190,31 @@ export function DownloadChart({
         trend: withTrend[i]?.trend,
       }));
     }
+
+    // Linear-extrapolation projection for an in-progress trailing bucket.
+    const projection = latestDate ? projectPartialBucket(aggregated, granularity, latestDate) : null;
+    if (projection && result.length >= 2) {
+      const lastIdx = result.length - 1;
+      // `projection` line connects the previous (complete) bucket value to the
+      // projected full-period total at the last bucket — drawn dashed.
+      result = result.map((d, i) => ({
+        ...d,
+        projection:
+          i === lastIdx - 1
+            ? (d.downloads as number)
+            : i === lastIdx
+              ? projection.projected
+              : null,
+      }));
+    }
     return result;
-  }, [filteredData, showMA, showTrend, granularity]);
+  }, [filteredData, showMA, showTrend, granularity, latestDate]);
+
+  const projectionInfo = useMemo(() => {
+    if (!latestDate) return null;
+    const aggregated = aggregateByGranularity(filteredData, granularity);
+    return projectPartialBucket(aggregated, granularity, latestDate);
+  }, [filteredData, granularity, latestDate]);
 
   const growthChartData = useMemo(() => {
     if (!growthMode) return [];
@@ -592,7 +618,9 @@ export function DownloadChart({
                             ? "7D Average"
                             : name === "trend"
                               ? "Trend"
-                              : "Downloads"
+                              : name === "projection"
+                                ? "Projected (full period)"
+                                : "Downloads"
                         }
                       />
                     }
@@ -624,6 +652,18 @@ export function DownloadChart({
                       strokeWidth={1.5}
                       dot={false}
                       strokeDasharray="6 3"
+                    />
+                  )}
+                  {projectionInfo && (
+                    <Line
+                      type="monotone"
+                      dataKey="projection"
+                      stroke={color}
+                      strokeWidth={1.5}
+                      strokeDasharray="5 4"
+                      dot={{ r: 3, fill: color, strokeWidth: 0 }}
+                      activeDot={{ r: 4, fill: color }}
+                      isAnimationActive={false}
                     />
                   )}
                 </ComposedChart>

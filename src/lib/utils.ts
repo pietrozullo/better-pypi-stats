@@ -208,6 +208,55 @@ export function calculateBreakdownGrowthByPeriod(
   });
 }
 
+/**
+ * For a bucket starting at `bucketStart`, return how many days the bucket
+ * spans, how many of those days have data given `latestDate`, and whether
+ * the bucket is still in progress.
+ */
+export function getPeriodInfo(
+  bucketStart: string,
+  granularity: Granularity,
+  latestDate: string
+): { totalDays: number; elapsedDays: number; isPartial: boolean } {
+  const start = new Date(bucketStart + "T00:00:00Z");
+  const latest = new Date(latestDate + "T00:00:00Z");
+  let end: Date;
+  if (granularity === "year") {
+    end = new Date(Date.UTC(start.getUTCFullYear() + 1, 0, 0));
+  } else if (granularity === "month") {
+    end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0));
+  } else if (granularity === "week") {
+    end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 6);
+  } else {
+    end = new Date(start);
+  }
+  const totalDays = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  const elapsedDays = Math.max(
+    0,
+    Math.min(totalDays, Math.round((latest.getTime() - start.getTime()) / 86_400_000) + 1)
+  );
+  return { totalDays, elapsedDays, isPartial: latest < end };
+}
+
+/**
+ * If the last bucket in `data` is still in progress, project its full-period
+ * total via linear extrapolation (current / elapsed * total). Returns null
+ * for daily granularity or when the last bucket is already complete.
+ */
+export function projectPartialBucket(
+  data: { date: string; downloads: number }[],
+  granularity: Granularity,
+  latestDate: string
+): { projected: number; elapsedDays: number; totalDays: number } | null {
+  if (granularity === "day" || data.length === 0) return null;
+  const last = data[data.length - 1];
+  const info = getPeriodInfo(last.date, granularity, latestDate);
+  if (!info.isPartial || info.elapsedDays <= 0) return null;
+  const projected = Math.round(last.downloads * (info.totalDays / info.elapsedDays));
+  return { projected, elapsedDays: info.elapsedDays, totalDays: info.totalDays };
+}
+
 export const CHART_COLORS = [
   "#6366f1", // indigo
   "#8b5cf6", // violet

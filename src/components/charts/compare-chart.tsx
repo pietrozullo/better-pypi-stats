@@ -20,6 +20,7 @@ import {
   formatDateForGranularity,
   aggregateBreakdownByGranularity,
   calculateBreakdownGrowthByPeriod,
+  projectPartialBucket,
 } from "@/lib/utils";
 import type { Granularity } from "@/lib/utils";
 import { ChartExportWrapper, ExportButtons } from "./chart-export";
@@ -127,12 +128,47 @@ export function CompareChart({ packages }: CompareChartProps) {
     });
 
     // Apply granularity aggregation
+    let series: Record<string, string | number | null>[];
     if (granularity !== "day") {
       const aggregated = aggregateBreakdownByGranularity(rawData, labels, granularity);
-      return growthMode ? calculateBreakdownGrowthByPeriod(aggregated, labels) : aggregated;
+      series = growthMode ? calculateBreakdownGrowthByPeriod(aggregated, labels) : aggregated;
+    } else {
+      series = growthMode ? calculateBreakdownGrowthByPeriod(rawData, labels) : rawData;
     }
-    return growthMode ? calculateBreakdownGrowthByPeriod(rawData, labels) : rawData;
+
+    // Per-package linear-extrapolation projection for the trailing partial bucket.
+    // Suppressed in growth/normalized modes — projection isn't meaningful there.
+    if (!growthMode && !normalized && series.length >= 2) {
+      const lastIdx = series.length - 1;
+      packages.forEach((pkg) => {
+        const label = getLabel(pkg);
+        const latest = pkg.dailyDownloads.length
+          ? pkg.dailyDownloads[pkg.dailyDownloads.length - 1].date
+          : null;
+        if (!latest) return;
+        // Re-aggregate this package alone to get its own bucketed series for projection.
+        const pkgAgg =
+          granularity === "day"
+            ? pkg.dailyDownloads
+            : aggregateBreakdownByGranularity(
+                pkg.dailyDownloads.map((d) => ({ date: d.date, [label]: d.downloads })),
+                [label],
+                granularity
+              ).map((r) => ({ date: String(r.date), downloads: Number(r[label] || 0) }));
+        const proj = projectPartialBucket(pkgAgg, granularity, latest);
+        if (!proj) return;
+        const projKey = `${label}__projection`;
+        series.forEach((row, i) => {
+          if (i === lastIdx - 1) row[projKey] = row[label] as number;
+          else if (i === lastIdx) row[projKey] = proj.projected;
+          else row[projKey] = null;
+        });
+      });
+    }
+    return series;
   }, [packages, normalized, smoothed, dateRange, granularity, growthMode, getLabel, labels]);
+
+  const showProjection = !growthMode && !normalized && granularity !== "day";
 
   const exportFilename = `compare-${packages.map((p) => p.name).join("-vs-")}${growthMode ? "-growth" : ""}`;
 
@@ -231,6 +267,9 @@ export function CompareChart({ packages }: CompareChartProps) {
                       granularity={granularity}
                       growthMode={growthMode}
                       sortByValue
+                      nameFormatter={(name) =>
+                        name.endsWith("__projection") ? `${name.slice(0, -"__projection".length)} (projected)` : name
+                      }
                       valueFormatter={(value) =>
                         growthMode ? formatPercentChange(value) : normalized ? `${value}%` : value == null ? "n/a" : formatNumber(value)
                       }
@@ -253,6 +292,21 @@ export function CompareChart({ packages }: CompareChartProps) {
                     activeDot={{ r: 3 }}
                   />
                 ))}
+                {showProjection &&
+                  packages.map((pkg) => (
+                    <Line
+                      key={`${displayKey(pkg)}__projection`}
+                      type="monotone"
+                      dataKey={`${getLabel(pkg)}__projection`}
+                      stroke={pkg.color}
+                      strokeWidth={1.5}
+                      strokeDasharray="5 4"
+                      dot={{ r: 2.5, fill: pkg.color, strokeWidth: 0 }}
+                      activeDot={{ r: 3 }}
+                      legendType="none"
+                      isAnimationActive={false}
+                    />
+                  ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
