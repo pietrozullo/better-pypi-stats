@@ -145,6 +145,7 @@ export function PackageView({ stats, info, registry = "pypi", crossRegistryDownl
         <DownloadChart
           data={stats.dailyDownloads}
           packageName={stats.name}
+          registry={registry}
           breakdowns={[
             // Cross-registry breakdown (if package exists on both)
             ...(crossRegistryDownloads && crossRegistryDownloads.length > 0
@@ -178,7 +179,7 @@ export function PackageView({ stats, info, registry = "pypi", crossRegistryDownl
                   key: "version",
                   data: stats.versionTimeSeries.data,
                   categories: stats.versionTimeSeries.categories,
-                  mode: "lines" as const,
+                  mode: (isPyPI ? "lines" : "bar") as "lines" | "bar",
                 }]
               : []),
             ...(isPyPI ? [

@@ -75,8 +75,8 @@ interface BreakdownOption {
   key: string;
   data: BreakdownTimeSeries;
   categories: string[];
-  /** "stacked" for OS/Python (parts of a whole), "lines" for versions (overlapping) */
-  mode?: "stacked" | "lines";
+  /** "stacked" for OS/Python (parts of a whole), "lines" for versions (overlapping), "bar" for single-point aggregate data */
+  mode?: "stacked" | "lines" | "bar";
 }
 
 interface DownloadChartProps {
@@ -84,6 +84,7 @@ interface DownloadChartProps {
   title?: string;
   color?: string;
   packageName?: string;
+  registry?: "pypi" | "npm";
   breakdowns?: BreakdownOption[];
 }
 
@@ -100,6 +101,7 @@ export function DownloadChart({
   title = "Downloads Over Time",
   color = "#6366f1",
   packageName = "chart",
+  registry = "pypi",
   breakdowns = [],
 }: DownloadChartProps) {
   const [dateRange, setDateRange] = useState(90);
@@ -118,8 +120,9 @@ export function DownloadChart({
   const chartColors = useChartColors();
   const fetchCache = useRef(new Map<string, unknown>());
 
-  // Fetch data from BigQuery APIs
+  // Fetch data from BigQuery APIs (PyPI only)
   const fetchVersionData = useCallback(async (days: number, uvFilter: boolean) => {
+    if (registry !== "pypi") return;
     const cacheKey = `versions-${days}-${uvFilter}`;
     if (fetchCache.current.has(cacheKey)) {
       const cached = fetchCache.current.get(cacheKey) as { data: BreakdownTimeSeries; categories: string[] };
@@ -140,9 +143,10 @@ export function DownloadChart({
     } finally {
       setLoadingExtended(false);
     }
-  }, [packageName]);
+  }, [packageName, registry]);
 
   const fetchHistoryData = useCallback(async (days: number, uvFilter: boolean) => {
+    if (registry !== "pypi") return;
     const cacheKey = `history-${days}-${uvFilter}`;
     if (fetchCache.current.has(cacheKey)) {
       const cached = fetchCache.current.get(cacheKey) as { data: { date: string; downloads: number }[] };
@@ -162,7 +166,7 @@ export function DownloadChart({
     } finally {
       setLoadingExtended(false);
     }
-  }, [packageName]);
+  }, [packageName, registry]);
 
   // Fetch data when range/breakdown/filter changes
   useEffect(() => {
@@ -518,7 +522,46 @@ export function DownloadChart({
         <CardContent>
           <div className="h-[320px]">
             <ResponsiveContainer width="100%" height="100%">
-              {isBreakdownMode && currentBreakdown.mode === "lines" ? (
+              {isBreakdownMode && currentBreakdown.mode === "bar" ? (
+                /* Bar chart for aggregate version breakdown (e.g. npm last-week totals) */
+                <BarChart
+                  data={(() => {
+                    const latest = currentBreakdown.data[currentBreakdown.data.length - 1] || {};
+                    return currentBreakdown.categories
+                      .filter((cat) => !hiddenCategories.has(cat))
+                      .map((cat) => ({ version: cat, downloads: (latest[cat] as number) || 0 }))
+                      .sort((a, b) => b.downloads - a.downloads);
+                  })()}
+                  margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+                  <XAxis
+                    dataKey="version"
+                    stroke={chartColors.axis}
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tickFormatter={formatNumber}
+                    stroke={chartColors.axis}
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                    width={55}
+                  />
+                  <Tooltip
+                    content={<DateTooltip granularity={granularity} nameFormatter={() => "Downloads (last week)"} />}
+                  />
+                  <Bar dataKey="downloads" radius={[3, 3, 0, 0]}>
+                    {currentBreakdown.categories
+                      .filter((cat) => !hiddenCategories.has(cat))
+                      .map((cat, i) => (
+                        <Cell key={cat} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      ))}
+                  </Bar>
+                </BarChart>
+              ) : isBreakdownMode && currentBreakdown.mode === "lines" ? (
                 /* Line chart for version breakdown (overlapping, not stacked) */
                 <LineChart
                   data={currentBreakdown.data}
@@ -809,6 +852,11 @@ export function DownloadChart({
                 )}
               </ResponsiveContainer>
             </div>
+          )}
+          {isBreakdownMode && currentBreakdown.mode === "bar" && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              npm&apos;s API only provides per-version download totals for the last 7 days — a daily timeline is not available.
+            </p>
           )}
         </CardContent>
       </Card>

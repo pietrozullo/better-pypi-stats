@@ -28,7 +28,7 @@ interface NpmRangeResponse {
 
 interface NpmVersionsResponse {
   package: string;
-  downloads: Record<string, { version: string; downloads: number }>;
+  downloads: Record<string, number>;
 }
 
 export async function getNpmRecentDownloads(pkg: string) {
@@ -71,11 +71,11 @@ export async function getNpmVersionDownloads(pkg: string) {
     );
 
     // Sort by downloads, get top 8
-    const sorted = Object.values(data.downloads)
-      .sort((a, b) => b.downloads - a.downloads)
+    const sorted = Object.entries(data.downloads)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 8);
 
-    return sorted.map((v) => ({ name: v.version, value: v.downloads }));
+    return sorted.map(([version, downloads]) => ({ name: version, value: downloads }));
   } catch {
     return [];
   }
